@@ -435,6 +435,7 @@ function App() {
           `Frase guardada en «Piezas guardadas» (nota de la heurística: ${reward.toFixed(2)}). Escúchala — y siembra el próximo entrenamiento.`,
         );
       } catch (err) {
+        console.error('Conservatorio (Magenta):', err); // el detalle completo, para depurar
         setConservatoryMessage(
           `No salió: ${err instanceof Error ? err.message : String(err)}. ¿Hay internet? El cerebro se descarga de Google la primera vez.`,
         );

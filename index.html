@@ -8,6 +8,11 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Magenta (via seedrandom/protobufjs) espera el `global` de Node;
+         en el navegador no existe. Shim antes de cargar cualquier módulo. -->
+    <script>
+      window.global = window.global || window;
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
