@@ -313,6 +313,37 @@ métrica antes que la música":
 
 Tests: 96 → 99.
 
+## 2026-07-02 — Fase 6 (1/2): OÍDO VERTICAL — armonía de simultaneidades
+
+**Autores: Usuario (pidió "enséñale armonía / cuándo va una disonancia" y
+aportó el dato clave: la gen 0 sonaba casi a Sadness and Sorrow y miles de
+generaciones DESPUÉS sonaba peor) + Claude (diseño e implementación)**
+
+- **Desviación de la spec decidida juntos:** la heurística portada mide
+  consonancia contra la escala pero no escucha qué suena A LA VEZ — dos notas
+  correctas de la escala pueden chocar (2ª menor sostenida) sin castigo. Ni el
+  gusto (Etapa 3) podía arreglarlo: solo re-pesa componentes que existen.
+- **`engine/harmony.ts` — verticalConsonance ∈ [0,1]:** puntúa los choques
+  simultáneos (incluidas notas SOSTENIDAS de steps anteriores) con la regla
+  real de la música: 2ªm/7ªM/tritono ásperos; nota de paso breve y a
+  contratiempo casi no cuenta; choque sostenido duele siempre, caiga donde
+  caiga. El peor choque define cada momento (sumar pares infla acordes).
+- **Integración FUERA del reward.js portado** (sigue intacto): el fitness del
+  genético resta hasta 0.3 por choques (`HARMONY_WEIGHT`), con las trampas del
+  portado intactas. Aplica con y sin corpus.
+- **Calibración contra la música real del Usuario:** las ventanas de Sadness
+  and Sorrow puntúan 0.95 de media (min 0.69) — el oído no castiga lo que un
+  pianista real hace.
+- **Verificación anti-degradación (el dato del Usuario, reproducido):** con
+  corpus + armonía, a las 3.000 generaciones el mejor tiene vertical 1.000
+  (cero choques), similitud 0.70 (por ENCIMA de la gen 0: ya no se aleja del
+  estilo) y melodía por grados con saltos compensados. El bench de la spec
+  sigue verde (2000 gens/28 s, best 0.835, pulso 0.87, escala 0.74).
+
+Tests: 99 → 104 (acorde limpio=1, monofonía=1, 2ªm sostenida <0.4, nota de
+paso >0.85 y mejor que el choque sostenido, choque con sostenida de antes).
+Pendiente de la Fase 6: modo dueto + pulido (code-splitting).
+
 ## Ideas anotadas durante las pruebas del Usuario (2026-07-02)
 
 - **Idea (Usuario): estiramientos "que valgan la pena".** Hoy el trade-off es

@@ -2,6 +2,7 @@ import type { Finger, Genome, Hand, NoteEvent, TrainConfig } from '../types/musi
 import { KBD_HI, KBD_LO, STEPS_PER_BAR } from './constants';
 import { blendedReward } from './corpus-blend';
 import { allNotes, cloneGenome, randomGenome, repairGenome } from './genome';
+import { verticalConsonance } from './harmony';
 import { MarkovModel, melodyIntervals } from './markov';
 import { musicalReward } from './reward';
 import { detectScaleKrumhansl, scaleInfo } from './reward-helpers';
@@ -17,6 +18,9 @@ import { mulberry32, pick, randInt, weightedPick } from './rng';
 
 type Individual = { genome: Genome; fitness: number };
 export type GenStats = { gen: number; best: number; avg: number };
+
+/** Peso del oído vertical en el fitness (0 = como la spec pura). */
+const HARMONY_WEIGHT = 0.3;
 
 function clampMidi(midi: number): number {
   return Math.max(KBD_LO, Math.min(KBD_HI, midi));
@@ -272,10 +276,15 @@ export class GeneticTrainer {
   }
 
   private evaluate(genome: Genome): number {
-    if (this.corpusModel && this.cfg.corpus) {
-      return blendedReward(genome.steps, this.corpusModel, this.cfg.corpus.alpha, this.cfg.weights);
-    }
-    return musicalReward(genome.steps, this.cfg.weights);
+    const base =
+      this.corpusModel && this.cfg.corpus
+        ? blendedReward(genome.steps, this.corpusModel, this.cfg.corpus.alpha, this.cfg.weights)
+        : musicalReward(genome.steps, this.cfg.weights);
+    if (base <= -0.2) return base; // trampas del reward portado: intactas
+    // Oído vertical (Fase 6): los choques simultáneos restan hasta 0.3.
+    // Fuera del reward.js portado a propósito — es una adición nuestra,
+    // decidida con el Usuario y registrada en BITACORA.md.
+    return base + HARMONY_WEIGHT * (verticalConsonance(genome.steps) - 1);
   }
 
   private freshIndividual(): Individual {
