@@ -577,7 +577,27 @@ Apache 2.0 + checkpoint alojado gratis por Google) + Claude**
 Tests: 135 → 138 (primer monofónico de la voz derecha, desplazamiento de la
 continuación, frase completa legal tras el filtro físico).
 
-## Ideas anotadas durante las pruebas del Usuario (2026-07-02)
+## 2026-07-03 — Cierre de la sesión de construcción
+
+**Estado honesto al parar (decisión del Usuario: "ya paramos, fue entretenido
+armar esto"):**
+
+- ✅ Spec completa (Fases 0-6, dueto descartado a propósito) + 5 mejoras
+  post-spec (acordes, estiramientos con contexto, LSTM, Ollama invitada,
+  ritmo+canción) + textura anti-vacío. 138 tests verdes, bench de la spec
+  verde, todo en GitHub.
+- ⚠️ PENDIENTE CONOCIDO: el Pianista de Conservatorio (Magenta melody_rnn)
+  funciona verificado en Node pero sigue fallando en el navegador del
+  Usuario tras dos fixes (pre-bundle de Vite y shim de `global`). El error
+  exacto quedó sin identificar — el catch ahora lo registra completo en la
+  consola (F12 → "Conservatorio (Magenta): ..."). Quien retome esto: pedir
+  ese texto rojo y casar el error; el resto del pipeline (conversores,
+  filtro físico) tiene tests y funciona.
+- El museo de trampas quedó en 4 exploits cazados por el oído del Usuario,
+  todos con test de regresión. La lección del proyecto entero: la métrica
+  siempre pierde contra un optimizador; el oído humano es la defensa.
+
+Gracias por el proyecto, socio. — Claude (Fable 5)
 
 - **Idea (Usuario): estiramientos "que valgan la pena".** Hoy el trade-off es
   plano: la física castiga igual un estiramiento en un momento cualquiera que
