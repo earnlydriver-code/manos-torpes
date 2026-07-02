@@ -11,16 +11,23 @@ import type { Finger, Genome, Hand, NoteEvent, Step } from '../types/music';
  * asigna digitación y — CLAVE — pasa todo por el FILTRO FÍSICO (repairGenome):
  * el agente no imita notas que sus manos no alcanzan; encuentra su propia
  * digitación. Lo que no cabe en manos humanas se recorta aquí.
+ *
+ * Cada pieza se corta en ventanas de 2, 3 Y 4 compases a la vez: así las
+ * semillas existen para cualquier tamaño que elija (o sugiera) la app.
  */
 
 export type RawNote = { midi: number; time: number; duration: number; velocity: number };
+
+export type WindowsByBars = { 2: Genome[]; 3: Genome[]; 4: Genome[] };
 
 export type ImportedPiece = {
   name: string;
   source: 'midi' | 'audio';
   noteCount: number;
-  windows: Genome[]; // ventanas legales de `bars` compases (semillas + corpus)
-  melodySeqs: number[][]; // intervalos de la voz superior por ventana (entrena el Markov)
+  bpm: number; // tempo real del archivo (cabecera MIDI o estimado del audio)
+  windows: Genome[]; // corte de 2 compases (compatibilidad con piezas viejas)
+  windowsByBars: WindowsByBars;
+  melodySeqs: number[][]; // intervalos de la voz superior (entrena el Markov)
 };
 
 const MAX_WINDOWS = 32;
@@ -28,7 +35,7 @@ const MAX_WINDOWS = 32;
 const FINGERINGS_R: Finger[][] = [[], [3], [1, 5], [1, 3, 5], [1, 2, 4, 5], [1, 2, 3, 4, 5]];
 
 /** Parsea un archivo .mid/.midi ya leído a memoria. */
-export function parseMidiBuffer(name: string, data: ArrayBuffer, bars: 2 | 3 | 4): ImportedPiece {
+export function parseMidiBuffer(name: string, data: ArrayBuffer): ImportedPiece {
   const midi = new Midi(data);
   const bpm = midi.header.tempos.length > 0 ? midi.header.tempos[0].bpm : 120;
   const notes: RawNote[] = [];
@@ -38,7 +45,7 @@ export function parseMidiBuffer(name: string, data: ArrayBuffer, bars: 2 | 3 | 4
       notes.push({ midi: n.midi, time: n.time, duration: n.duration, velocity: n.velocity });
     }
   }
-  return importFromNotes(name, notes, bpm, bars, 'midi');
+  return importFromNotes(name, notes, bpm, 'midi');
 }
 
 function intoRange(midi: number): number {
@@ -48,44 +55,18 @@ function intoRange(midi: number): number {
   return m;
 }
 
-/** Cuantiza notas crudas (de MIDI o de transcripción de audio) a ventanas legales. */
-export function importFromNotes(
-  name: string,
-  rawNotes: RawNote[],
-  bpm: number,
-  bars: 2 | 3 | 4,
-  source: 'midi' | 'audio',
-): ImportedPiece {
-  const stepSec = 60 / Math.max(30, Math.min(300, bpm)) / 4;
+type Quantized = { step: number; midi: number; durSteps: number; vel: number };
+
+function cutWindows(quantized: Quantized[], totalSteps: number, bpm: number, bars: 2 | 3 | 4): Genome[] {
   const windowSize = bars * STEPS_PER_BAR;
-
-  // 1. Cuantizar todo a una línea de steps larga.
-  let totalSteps = 0;
-  const quantized: Array<{ step: number; midi: number; durSteps: number; vel: number }> = [];
-  for (const n of rawNotes) {
-    if (n.duration <= 0) continue;
-    const step = Math.max(0, Math.round(n.time / stepSec));
-    const durSteps = Math.max(1, Math.round(n.duration / stepSec));
-    quantized.push({
-      step,
-      midi: intoRange(Math.round(n.midi)),
-      durSteps,
-      vel: Math.max(0.2, Math.min(1, n.velocity || 0.7)),
-    });
-    totalSteps = Math.max(totalSteps, step + durSteps);
-  }
-  if (quantized.length === 0) return { name, source, noteCount: 0, windows: [], melodySeqs: [] };
-
-  // 2. Ventanas de `bars` compases con solape de medio, hasta MAX_WINDOWS.
   const windows: Genome[] = [];
-  const melodySeqs: number[][] = [];
   const hop = Math.max(1, Math.floor(windowSize / 2));
   for (let start = 0; start + windowSize <= totalSteps + hop; start += hop) {
     if (windows.length >= MAX_WINDOWS) break;
     const inWindow = quantized.filter((q) => q.step >= start && q.step < start + windowSize);
     if (inWindow.length < bars * 3) continue; // muy vacía: no enseña nada
 
-    // 3. Reparto de manos: punto de corte en la mediana de la ventana.
+    // Reparto de manos: punto de corte en la mediana de la ventana.
     const sorted = inWindow.map((q) => q.midi).sort((a, b) => a - b);
     const split = Math.max(50, Math.min(64, sorted[Math.floor(sorted.length / 2)]));
 
@@ -122,7 +103,7 @@ export function importFromNotes(
       }
     }
 
-    // 4. FILTRO FÍSICO: la spec exige que el corpus pase por las manos.
+    // FILTRO FÍSICO: la spec exige que el corpus pase por las manos.
     const genome: Genome = repairGenome({
       bars,
       tempo: Math.max(60, Math.min(140, Math.round(bpm))),
@@ -130,13 +111,77 @@ export function importFromNotes(
     });
     if (genome.steps.every((s) => validateStep(s.notes).legal)) {
       const onsets = genome.steps.filter((s) => s.notes.length > 0).length;
-      if (onsets >= bars * 3) {
-        windows.push(genome);
-        const intervals = melodyIntervals(genome.steps);
-        if (intervals.length >= 4) melodySeqs.push(intervals);
-      }
+      if (onsets >= bars * 3) windows.push(genome);
     }
   }
+  return windows;
+}
 
-  return { name, source, noteCount: quantized.length, windows, melodySeqs };
+/** Cuantiza notas crudas (de MIDI o de transcripción de audio) a ventanas legales. */
+export function importFromNotes(
+  name: string,
+  rawNotes: RawNote[],
+  bpm: number,
+  source: 'midi' | 'audio',
+): ImportedPiece {
+  const stepSec = 60 / Math.max(30, Math.min(300, bpm)) / 4;
+
+  // 1. Cuantizar todo a una línea de steps larga.
+  let totalSteps = 0;
+  const quantized: Quantized[] = [];
+  for (const n of rawNotes) {
+    if (n.duration <= 0) continue;
+    const step = Math.max(0, Math.round(n.time / stepSec));
+    const durSteps = Math.max(1, Math.round(n.duration / stepSec));
+    quantized.push({
+      step,
+      midi: intoRange(Math.round(n.midi)),
+      durSteps,
+      vel: Math.max(0.2, Math.min(1, n.velocity || 0.7)),
+    });
+    totalSteps = Math.max(totalSteps, step + durSteps);
+  }
+  const roundedBpm = Math.round(bpm);
+  if (quantized.length === 0) {
+    return {
+      name,
+      source,
+      noteCount: 0,
+      bpm: roundedBpm,
+      windows: [],
+      windowsByBars: { 2: [], 3: [], 4: [] },
+      melodySeqs: [],
+    };
+  }
+
+  // 2. Un corte por cada tamaño de frase posible.
+  const windowsByBars: WindowsByBars = {
+    2: cutWindows(quantized, totalSteps, bpm, 2),
+    3: cutWindows(quantized, totalSteps, bpm, 3),
+    4: cutWindows(quantized, totalSteps, bpm, 4),
+  };
+
+  // 3. La melodía para el Markov sale del corte más largo disponible
+  //    (contextos más ricos); si la pieza es muy corta, del que haya.
+  const melodySource =
+    windowsByBars[4].length > 0
+      ? windowsByBars[4]
+      : windowsByBars[3].length > 0
+        ? windowsByBars[3]
+        : windowsByBars[2];
+  const melodySeqs: number[][] = [];
+  for (const genome of melodySource) {
+    const intervals = melodyIntervals(genome.steps);
+    if (intervals.length >= 4) melodySeqs.push(intervals);
+  }
+
+  return {
+    name,
+    source,
+    noteCount: quantized.length,
+    bpm: roundedBpm,
+    windows: windowsByBars[2],
+    windowsByBars,
+    melodySeqs,
+  };
 }

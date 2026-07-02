@@ -25,6 +25,10 @@ export type SavedCorpusPiece = {
   noteCount: number;
   windows: Genome[];
   melodySeqs: number[][];
+  /** Tempo real del archivo. Piezas viejas no lo traen: se usa windows[0].tempo. */
+  bpm?: number;
+  /** Cortes por tamaño de frase. Piezas viejas no lo traen: solo sirven a 2 compases. */
+  windowsByBars?: { 2: Genome[]; 3: Genome[]; 4: Genome[] };
 };
 
 const DB_NAME = 'manos-torpes';

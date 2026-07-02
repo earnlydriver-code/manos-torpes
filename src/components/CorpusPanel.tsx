@@ -114,7 +114,8 @@ export function CorpusPanel({
                 <li key={piece.id}>
                   <span className="piece-name">{piece.name}</span>
                   <span className="piece-meta">
-                    {piece.source === 'midi' ? 'MIDI' : 'audio'} · {piece.noteCount} notas ·{' '}
+                    {piece.source === 'midi' ? 'MIDI' : 'audio'} ·{' '}
+                    {piece.bpm ?? piece.windows[0]?.tempo ?? '¿?'} BPM · {piece.noteCount} notas ·{' '}
                     {piece.windows.length} fragmentos
                   </span>
                   <button

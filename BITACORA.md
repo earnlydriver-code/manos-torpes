@@ -258,6 +258,31 @@ calificaciones, sin señal no hay cambio, estado inicial de la spec).
 splitting del bundle, rendimiento), modo dueto, y evaluar el experimento de la
 IA local como generador de semillas.
 
+## 2026-07-02 — Auto tempo y compases (petición del Usuario durante las pruebas)
+
+**Autor: Claude** (Usuario: "¿cómo voy a saber qué tempo y compases ponerle a
+cada canción? ¿puedes hacer que eso él lo decida de alguna manera lógica?")
+
+- **`corpus/suggest.ts`**: sugerencia automática con lógica explicable —
+  tempo = MEDIANA de los tempos reales de las piezas (el MIDI lo trae en la
+  cabecera; el audio se estimó al importar); compases = por densidad de
+  ataques (≥8 ataques/compás ⇒ 2 compases; 5–8 ⇒ 3; <5 ⇒ 4 — la música
+  espaciada necesita más aire para decir una frase).
+- Checkbox **«🎯 Auto según el corpus»** (activado por defecto cuando hay
+  corpus): tempo y compases se deciden solos y muestran el porqué; se puede
+  desmarcar para control manual.
+- El importador ahora corta cada pieza en ventanas de 2, 3 **y** 4 compases a
+  la vez (`windowsByBars`): las semillas existen para cualquier tamaño que se
+  elija — antes solo existían para el tamaño seleccionado al importar. La
+  melodía del Markov sale del corte más largo (contextos más ricos). Piezas
+  ya importadas (viejas) siguen funcionando: siembran solo a 2 compases y su
+  tempo se lee de sus ventanas.
+- La lista del corpus muestra el BPM real de cada pieza.
+
+Tests: 91 → 96 (sugerencia ×4 + corte multi-tamaño). Nota: las piezas que el
+Usuario ya importó conviene RE-IMPORTARLAS (borrar + arrastrar de nuevo) para
+que tengan cortes de 3/4 compases y BPM real.
+
 ## Ideas anotadas durante las pruebas del Usuario (2026-07-02)
 
 - **Idea (Usuario): estiramientos "que valgan la pena".** Hoy el trade-off es

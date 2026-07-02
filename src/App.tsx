@@ -10,6 +10,7 @@ import { RewardPanel } from './components/RewardPanel';
 import { TrainerControls } from './components/TrainerControls';
 import { decodeAudioToMono22050, estimateBpm, transcribeAudio } from './corpus/audio-import';
 import { importFromNotes, parseMidiBuffer } from './corpus/midi-import';
+import { suggestTraining } from './corpus/suggest';
 import { MarkovModel } from './engine/markov';
 import { rewardBreakdown } from './engine/reward-breakdown';
 import { defaultTaste, updateWeights } from './engine/taste';
@@ -84,6 +85,12 @@ function App() {
     return model;
   }, [corpusPieces]);
 
+  // Sugerencia automática: tempo real de las piezas + compases según densidad.
+  const suggestion = useMemo(() => suggestTraining(corpusPieces), [corpusPieces]);
+  const [autoTuning, setAutoTuning] = useState(true);
+  const effTempo = autoTuning && suggestion ? suggestion.tempo : tempo;
+  const effBars = autoTuning && suggestion ? suggestion.bars : bars;
+
   const handleCorpusFiles = useCallback(
     async (files: File[]) => {
       const MIDI_EXT = /\.(mid|midi)$/i;
@@ -95,7 +102,7 @@ function App() {
         try {
           let piece;
           if (MIDI_EXT.test(file.name)) {
-            piece = parseMidiBuffer(file.name, await file.arrayBuffer(), bars);
+            piece = parseMidiBuffer(file.name, await file.arrayBuffer());
           } else if (AUDIO_EXT.test(file.name)) {
             // Camino experimental: decodificar aquí, transcribir en el worker.
             const audio = await decodeAudioToMono22050(file);
@@ -103,7 +110,7 @@ function App() {
               setCorpusProgress(Math.round(pct * 100)),
             );
             if (notes.length === 0) throw new Error('la transcripción no encontró notas');
-            piece = importFromNotes(file.name, notes, estimateBpm(notes), bars, 'audio');
+            piece = importFromNotes(file.name, notes, estimateBpm(notes), 'audio');
           } else {
             setCorpusError(`«${file.name}»: formato no soportado (usa .mid, .mp3 o .wav).`);
             continue;
@@ -121,6 +128,8 @@ function App() {
             noteCount: piece.noteCount,
             windows: piece.windows,
             melodySeqs: piece.melodySeqs,
+            bpm: piece.bpm,
+            windowsByBars: piece.windowsByBars,
           });
         } catch (err) {
           console.error(`No se pudo importar «${file.name}»:`, err);
@@ -174,20 +183,23 @@ function App() {
     if (warmStart && pieces.length > 0) {
       seeds.push(
         ...[...pieces]
-          .filter((p) => p.genome.bars === bars)
+          .filter((p) => p.genome.bars === effBars)
           .sort((a, b) => b.reward - a.reward)
           .slice(0, 8)
           .map((p) => p.genome),
       );
     }
-    // Etapa 2: fragmentos de música real también siembran la población.
+    // Etapa 2: fragmentos de música real también siembran la población
+    // (el corte que coincida con el tamaño de frase elegido/sugerido).
     if (learnFromCorpus && corpusModel) {
-      const windows = corpusPieces.flatMap((p) => p.windows).filter((w) => w.bars === bars);
+      const windows = corpusPieces
+        .flatMap((p) => p.windowsByBars?.[effBars] ?? p.windows)
+        .filter((w) => w.bars === effBars);
       seeds.push(...windows.slice(0, 8));
     }
     trainer.start({
-      bars,
-      tempo,
+      bars: effBars,
+      tempo: effTempo,
       weights: taste.weights, // Etapa 3: tu gusto es la vara de medir
       seedGenomes: seeds.length > 0 ? seeds : undefined,
       corpus:
@@ -196,7 +208,7 @@ function App() {
           : undefined,
     });
     trainer.setThrottle(speed >= 50 ? null : speed * 2);
-  }, [trainer, bars, tempo, speed, warmStart, pieces, learnFromCorpus, corpusModel, corpusPieces, taste.weights]);
+  }, [trainer, effBars, effTempo, speed, warmStart, pieces, learnFromCorpus, corpusModel, corpusPieces, taste.weights]);
 
   const handleSave = useCallback(() => {
     if (!trainer.bestGenome || trainer.best === null) return;
@@ -335,13 +347,16 @@ function App() {
         gen={trainer.gen}
         best={trainer.best}
         speed={speed}
-        tempo={tempo}
-        bars={bars}
+        tempo={effTempo}
+        bars={effBars}
+        autoTuning={autoTuning}
+        suggestion={suggestion}
+        onAutoTuning={setAutoTuning}
         playing={playing !== null}
         canPlay={trainer.bestGenome !== null && audioReady}
         canSave={trainer.bestGenome !== null}
         warmStart={warmStart}
-        warmCount={pieces.filter((p) => p.genome.bars === bars).length}
+        warmCount={pieces.filter((p) => p.genome.bars === effBars).length}
         onTrain={handleTrain}
         onPause={trainer.pause}
         onResume={trainer.resume}

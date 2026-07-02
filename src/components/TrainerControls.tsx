@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { TrainingSuggestion } from '../corpus/suggest';
 import type { TrainerState } from '../hooks/useTrainer';
 
 /**
@@ -14,6 +15,9 @@ type Props = {
   speed: number;
   tempo: number;
   bars: 2 | 3 | 4;
+  autoTuning: boolean;
+  suggestion: TrainingSuggestion | null;
+  onAutoTuning: (value: boolean) => void;
   playing: boolean;
   canPlay: boolean;
   canSave: boolean;
@@ -41,6 +45,9 @@ export function TrainerControls(props: Props) {
     best,
     speed,
     bars,
+    autoTuning,
+    suggestion,
+    onAutoTuning,
     playing,
     canPlay,
     canSave,
@@ -58,6 +65,7 @@ export function TrainerControls(props: Props) {
     onSave,
     onWarmStart,
   } = props;
+  const auto = autoTuning && suggestion !== null;
 
   return (
     <div className="controls">
@@ -109,14 +117,25 @@ export function TrainerControls(props: Props) {
             onChange={(e) => onSpeed(Number(e.target.value))}
           />
         </label>
+        {suggestion && (
+          <label title={`El corpus decide: ${suggestion.reason}`}>
+            <input
+              type="checkbox"
+              checked={autoTuning}
+              disabled={state !== 'sin-iniciar'}
+              onChange={(e) => onAutoTuning(e.target.checked)}
+            />
+            🎯 Auto según el corpus
+          </label>
+        )}
         <label>
           Tempo
           <input
             type="number"
             min={60}
             max={140}
-            value={tempoText}
-            disabled={state !== 'sin-iniciar'}
+            value={auto ? String(props.tempo) : tempoText}
+            disabled={auto || state !== 'sin-iniciar'}
             onChange={(e) => setTempoText(e.target.value)}
             onBlur={() => {
               // Clampar en cada tecla hace imposible escribir "85" (el "8" se
@@ -131,7 +150,7 @@ export function TrainerControls(props: Props) {
           Compases
           <select
             value={bars}
-            disabled={state !== 'sin-iniciar'}
+            disabled={auto || state !== 'sin-iniciar'}
             onChange={(e) => onBars(Number(e.target.value) as 2 | 3 | 4)}
           >
             <option value={2}>2</option>
@@ -151,6 +170,7 @@ export function TrainerControls(props: Props) {
           </label>
         )}
       </div>
+      {auto && suggestion && <p className="auto-hint">🎯 {suggestion.reason}</p>}
     </div>
   );
 }

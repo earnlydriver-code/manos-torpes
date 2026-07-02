@@ -22,9 +22,10 @@ function scaleNotes(): RawNote[] {
 
 describe('importFromNotes (cuantización + filtro físico)', () => {
   it('produce ventanas 100% legales con manos repartidas y melodía extraída', () => {
-    const piece = importFromNotes('escala', scaleNotes(), 120, 2, 'midi');
+    const piece = importFromNotes('escala', scaleNotes(), 120, 'midi');
     expect(piece.windows.length).toBeGreaterThan(0);
     expect(piece.melodySeqs.length).toBeGreaterThan(0);
+    expect(piece.bpm).toBe(120);
     for (const genome of piece.windows) {
       expect(genome.steps.length).toBe(32);
       expect(genome.tempo).toBe(120);
@@ -52,13 +53,28 @@ describe('importFromNotes (cuantización + filtro físico)', () => {
       duration: 0.2,
       velocity: 0.8,
     }));
-    const piece = importFromNotes('extremos', wild, 120, 2, 'midi');
+    const piece = importFromNotes('extremos', wild, 120, 'midi');
     for (const g of piece.windows)
       for (const s of g.steps)
         for (const n of s.notes) {
           expect(n.midi).toBeGreaterThanOrEqual(36);
           expect(n.midi).toBeLessThanOrEqual(96);
         }
+  });
+
+  it('corta ventanas para los tres tamaños de frase, todas legales', () => {
+    const piece = importFromNotes('escala', scaleNotes(), 120, 'midi');
+    for (const bars of [2, 3, 4] as const) {
+      const windows = piece.windowsByBars[bars];
+      expect(windows.length).toBeGreaterThan(0);
+      for (const g of windows) {
+        expect(g.bars).toBe(bars);
+        expect(g.steps.length).toBe(bars * 16);
+        for (const s of g.steps) expect(validateStep(s.notes).legal).toBe(true);
+      }
+    }
+    // El corte legado (compatibilidad) es el de 2 compases.
+    expect(piece.windows).toEqual(piece.windowsByBars[2]);
   });
 
   it('un archivo MIDI real (round-trip @tonejs/midi) se importa entero', () => {
@@ -70,14 +86,16 @@ describe('importFromNotes (cuantización + filtro físico)', () => {
     }
     const bytes = midi.toArray();
     const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-    const piece = parseMidiBuffer('roundtrip.mid', buffer as ArrayBuffer, 2);
+    const piece = parseMidiBuffer('roundtrip.mid', buffer as ArrayBuffer);
     expect(piece.noteCount).toBeGreaterThan(0);
     expect(piece.windows.length).toBeGreaterThan(0);
+    expect(piece.bpm).toBe(100); // el tempo de la cabecera MIDI
   });
 
   it('sin notas devuelve una pieza vacía sin explotar', () => {
-    const piece = importFromNotes('vacía', [], 120, 2, 'midi');
+    const piece = importFromNotes('vacía', [], 120, 'midi');
     expect(piece.windows).toEqual([]);
+    expect(piece.windowsByBars[4]).toEqual([]);
     expect(piece.noteCount).toBe(0);
   });
 });
