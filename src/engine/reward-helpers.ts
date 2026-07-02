@@ -213,11 +213,45 @@ export function melodicContour(seq: Step[]): number {
   return Math.max(0, Math.min(1, score));
 }
 
+/** Ventana (en steps) alrededor de un momento para decidir si es un clímax. */
+const CLIMAX_WINDOW = 8;
+/** Cuánto cuesta la tensión en un clímax (idea del Usuario: "vale la pena, pero no siempre"). */
+const CLIMAX_DISCOUNT = 0.35;
+
+/**
+ * ¿El step t es un CLÍMAX melódico? Su nota más aguda corona todo lo que
+ * suena a ±CLIMAX_WINDOW steps (y hay algo por debajo: una línea plana no
+ * tiene picos). Un pianista real acepta el estiramiento incómodo justo ahí.
+ */
+function climaxSteps(seq: Step[]): boolean[] {
+  const tops: (number | null)[] = seq.map((s) =>
+    s.notes.length > 0 ? Math.max(...s.notes.map((n) => n.midi)) : null,
+  );
+  return tops.map((top, t) => {
+    if (top === null) return false;
+    let isMax = true;
+    let hasLower = false;
+    for (let k = Math.max(0, t - CLIMAX_WINDOW); k < Math.min(tops.length, t + CLIMAX_WINDOW + 1); k++) {
+      const other = tops[k];
+      if (other === null || k === t) continue;
+      if (other > top) isMax = false;
+      if (other < top) hasLower = true;
+    }
+    return isMax && hasLower;
+  });
+}
+
 /**
  * Tensión física blanda promedio ∈ [0,1]. Reutiliza el `strain` que devuelve el
  * validateHandShape PORTADO (fuente de verdad) — no re-deriva una fórmula propia.
+ *
+ * CON CONTEXTO (mejora 2/4, idea del Usuario): el mismo estiramiento cuesta
+ * poco si corona un clímax melódico — como un pianista real, que acepta la
+ * incomodidad cuando la frase lo vale — y cuesta entero en un momento
+ * cualquiera. "Que considere cuándo vale la pena, pero no siempre."
  */
 export function avgStrain(seq: Step[]): number {
+  const climax = climaxSteps(seq);
   let total = 0;
   let count = 0;
   for (const s of seq) {
@@ -230,7 +264,8 @@ export function avgStrain(seq: Step[]): number {
         sorted.map((n) => n.finger),
         hand,
       );
-      total += result.legal ? result.strain : 1;
+      const raw = result.legal ? result.strain : 1;
+      total += climax[s.step] ? raw * CLIMAX_DISCOUNT : raw;
       count++;
     }
   }

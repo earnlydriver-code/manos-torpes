@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Finger, Step } from '../../types/music';
 import {
+  avgStrain,
   detectScaleKrumhansl,
   entropy,
   histogram,
@@ -133,6 +134,46 @@ describe('melodicContour', () => {
     const seq = emptySeq(16);
     seq[0].notes.push(note(60, 'R', 1));
     expect(melodicContour(seq)).toBe(0);
+  });
+});
+
+describe('avgStrain con contexto (mejora 2/4: el clímax perdona la tensión)', () => {
+  /** Acorde de octava justa (strain 1) para la derecha en el step t. */
+  function stretchAt(seq: Step[], t: number) {
+    seq[t].notes.push(note(72, 'R', 1, 2), note(84, 'R', 5, 2));
+  }
+  /** Melodía de fondo ascendiendo hacia el step 16 y descendiendo después. */
+  function hillMelody(): Step[] {
+    const seq = emptySeq(32);
+    const hill = [60, 62, 64, 65, 67, 69, 71, 72];
+    hill.forEach((m, i) => seq[i * 2].notes.push(note(m, 'R', 3, 2)));
+    [...hill].reverse().forEach((m, i) => seq[18 + i * 2 > 31 ? 31 : 18 + i * 2].notes.push(note(m, 'R', 3, 1)));
+    return seq;
+  }
+
+  it('el MISMO estiramiento cuesta menos coronando el clímax que en mitad de frase', () => {
+    // Clímax: el estirón (84 de tope) llega en la cima de la colina (step 16).
+    const atClimax = hillMelody();
+    stretchAt(atClimax, 16);
+    // Sin clímax: el mismo estirón cae al principio, rodeado de notas más altas después... no —
+    // para aislar: la colina sigue subiendo por encima del estirón reubicado como valle.
+    const midPhrase = hillMelody();
+    stretchAt(midPhrase, 4); // en step 4 la colina aún sube: 84 NO corona su ventana completa
+    midPhrase[10].notes.push(note(86, 'R', 5, 1)); // algo más alto cerca: no es clímax
+    expect(avgStrain(atClimax)).toBeLessThan(avgStrain(midPhrase));
+  });
+
+  it('una línea plana no tiene clímax: nada se descuenta', () => {
+    const flat = emptySeq(16);
+    for (let t = 0; t < 16; t += 2) flat[t].notes.push(note(72, 'R', 1, 2), note(84, 'R', 5, 2));
+    // Todos los steps iguales ⇒ ningún pico ⇒ strain completo (1 por step activo).
+    expect(avgStrain(flat)).toBe(1);
+  });
+
+  it('sin tensión, el contexto no inventa nada (sigue 0)', () => {
+    const seq = emptySeq(16);
+    seq[0].notes.push(note(60, 'R', 1, 4), note(64, 'R', 3, 4));
+    expect(avgStrain(seq)).toBe(0);
   });
 });
 

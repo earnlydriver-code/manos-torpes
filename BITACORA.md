@@ -382,6 +382,25 @@ Con esto el agente tiene los dos oídos armónicos: el vertical evita lo feo,
 el horizontal construye lo bello. Siguientes en la cola acordada: 2)
 estiramientos con contexto, 3) LSTM + piezas largas, 4) IA local (Ollama).
 
+## 2026-07-02 — Mejora 2/4: ESTIRAMIENTOS CON CONTEXTO (idea del Usuario)
+
+**Autores: Usuario (la idea: "que considere cuándo vale la pena ese
+estiramiento incómodo, pero no siempre") + Claude (implementación)**
+
+- `avgStrain` ahora detecta los CLÍMAX melódicos (steps cuya nota más aguda
+  corona todo lo que suena a ±8 steps, con material por debajo — una línea
+  plana no tiene picos) y ahí la tensión física cuesta solo el 35%: como un
+  pianista real, que acepta la incomodidad cuando la frase lo vale.
+- Sin tocar reward.js portado: avgStrain es helper nuestro; el contrato
+  ([0,1], strain del validador portado) se mantiene.
+- Feedback del Usuario tras la mejora 1/4: "sonó mucho mejor... aún repetitivo,
+  como ritmos de 3 notas consecutivas". El diagnóstico apunta al Markov de
+  orden 3 (memoria corta) — es EXACTAMENTE lo que la mejora 3/4 (LSTM +
+  piezas más largas) ataca. Anotado como criterio de éxito de esa fase.
+
+Tests: 111 → 114 (mismo estirón cuesta menos en el clímax; línea plana sin
+picos no descuenta nada; sin tensión el contexto no inventa). Bench verde.
+
 ## Ideas anotadas durante las pruebas del Usuario (2026-07-02)
 
 - **Idea (Usuario): estiramientos "que valgan la pena".** Hoy el trade-off es
