@@ -342,7 +342,20 @@ generaciones DESPUÉS sonaba peor) + Claude (diseño e implementación)**
 
 Tests: 99 → 104 (acorde limpio=1, monofonía=1, 2ªm sostenida <0.4, nota de
 paso >0.85 y mejor que el choque sostenido, choque con sostenida de antes).
-Pendiente de la Fase 6: modo dueto + pulido (code-splitting).
+
+## 2026-07-02 — Fase 6 (2/2): cierre — LA SPEC QUEDA COMPLETA
+
+- **Decisión (Usuario): el modo dueto NO se hace** — "no pienso tocar yo". La
+  spec lo marcaba como stretch/opcional (§6.7); descartado sin deuda.
+- **Decisión (Claude, registrada): el code-splitting del bundle se declara
+  innecesario** — es una app 100% local servida desde localhost; los ~232 KB
+  gzip de recharts no le cuestan nada a nadie. Hacerlo sería trabajo sin
+  beneficiario. El worker de transcripción (1.8 MB de TF.js) ya carga solo
+  bajo demanda, que era lo único que importaba.
+- Con esto, **las Fases 0–6 de la spec están completas** (dueto descartado por
+  decisión). Lo que siga ya es evolución del proyecto más allá de la spec:
+  las ideas anotadas abajo (LSTM, progresiones de acordes, estiramientos con
+  contexto, IA local como generador de semillas) se deciden juntos.
 
 ## Ideas anotadas durante las pruebas del Usuario (2026-07-02)
 
