@@ -1,9 +1,11 @@
 import type { Genome } from '../types/music';
 
 /**
- * Biblioteca de piezas en IndexedDB (idea del Usuario: que lo que el agente
- * aprende quede en memoria entre sesiones — y poder borrar lo viejo).
- * Las piezas guardadas también siembran nuevas corridas (arranque en caliente).
+ * Persistencia en IndexedDB (idea del Usuario: que lo aprendido quede en
+ * memoria entre sesiones — y poder borrar lo viejo).
+ *  - 'piezas': composiciones del agente (siembran el arranque en caliente).
+ *  - 'corpus': música real importada (MIDI/audio) ya cuantizada y pasada por
+ *    el filtro físico; entrena el modelo de la Etapa 2.
  */
 
 export type SavedPiece = {
@@ -15,15 +17,29 @@ export type SavedPiece = {
   genome: Genome;
 };
 
+export type SavedCorpusPiece = {
+  id?: number;
+  name: string;
+  addedAt: number; // epoch ms
+  source: 'midi' | 'audio';
+  noteCount: number;
+  windows: Genome[];
+  melodySeqs: number[][];
+};
+
 const DB_NAME = 'manos-torpes';
-const STORE = 'piezas';
+const DB_VERSION = 2; // v2: + almacén 'corpus' (Fase 4)
+const STORE_PIECES = 'piezas';
+const STORE_CORPUS = 'corpus';
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
-      if (!req.result.objectStoreNames.contains(STORE)) {
-        req.result.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
+      for (const store of [STORE_PIECES, STORE_CORPUS]) {
+        if (!req.result.objectStoreNames.contains(store)) {
+          req.result.createObjectStore(store, { keyPath: 'id', autoIncrement: true });
+        }
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -31,12 +47,16 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-function tx<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+function tx<T>(
+  storeName: string,
+  mode: IDBTransactionMode,
+  run: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
   return openDb().then(
     (db) =>
       new Promise<T>((resolve, reject) => {
-        const transaction = db.transaction(STORE, mode);
-        const request = run(transaction.objectStore(STORE));
+        const transaction = db.transaction(storeName, mode);
+        const request = run(transaction.objectStore(storeName));
         // Se resuelve en oncomplete, no en request.onsuccess: el onsuccess llega
         // ANTES del commit, y una escritura puede abortar al confirmar (p. ej.
         // cuota llena) — resolver antes sería una pérdida silenciosa.
@@ -59,13 +79,25 @@ function tx<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequ
 }
 
 export function savePiece(piece: Omit<SavedPiece, 'id'>): Promise<number> {
-  return tx('readwrite', (store) => store.add(piece) as IDBRequest<number>);
+  return tx(STORE_PIECES, 'readwrite', (store) => store.add(piece) as IDBRequest<number>);
 }
 
 export function listPieces(): Promise<SavedPiece[]> {
-  return tx('readonly', (store) => store.getAll() as IDBRequest<SavedPiece[]>);
+  return tx(STORE_PIECES, 'readonly', (store) => store.getAll() as IDBRequest<SavedPiece[]>);
 }
 
 export function deletePiece(id: number): Promise<void> {
-  return tx('readwrite', (store) => store.delete(id)).then(() => undefined);
+  return tx(STORE_PIECES, 'readwrite', (store) => store.delete(id)).then(() => undefined);
+}
+
+export function saveCorpusPiece(piece: Omit<SavedCorpusPiece, 'id'>): Promise<number> {
+  return tx(STORE_CORPUS, 'readwrite', (store) => store.add(piece) as IDBRequest<number>);
+}
+
+export function listCorpusPieces(): Promise<SavedCorpusPiece[]> {
+  return tx(STORE_CORPUS, 'readonly', (store) => store.getAll() as IDBRequest<SavedCorpusPiece[]>);
+}
+
+export function deleteCorpusPiece(id: number): Promise<void> {
+  return tx(STORE_CORPUS, 'readwrite', (store) => store.delete(id)).then(() => undefined);
 }

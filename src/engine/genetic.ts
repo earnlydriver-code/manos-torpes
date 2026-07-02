@@ -1,6 +1,8 @@
 import type { Finger, Genome, Hand, NoteEvent, TrainConfig } from '../types/music';
 import { KBD_HI, KBD_LO, STEPS_PER_BAR } from './constants';
+import { blendedReward } from './corpus-blend';
 import { allNotes, cloneGenome, randomGenome, repairGenome } from './genome';
+import { MarkovModel, melodyIntervals } from './markov';
 import { musicalReward } from './reward';
 import { detectScaleKrumhansl, scaleInfo } from './reward-helpers';
 import type { Rng } from './rng';
@@ -202,15 +204,55 @@ const MUTATORS: ReadonlyArray<readonly [Mutator, number]> = [
   [mutateTransposeHand, 0.07],
 ];
 
+/**
+ * Mutador de la Etapa 2: re-escribe la melodía de un compás caminando con
+ * intervalos MUESTREADOS DEL CORPUS (conserva el ritmo, inyecta el dibujo
+ * melódico aprendido). La física la garantiza el repair posterior.
+ */
+function makeCorpusLick(model: MarkovModel): Mutator {
+  return (rng, g) => {
+    const hand: Hand = rng() < 0.75 ? 'R' : 'L';
+    const bar = randInt(rng, 0, g.bars - 1);
+    const from = bar * STEPS_PER_BAR;
+    const to = from + STEPS_PER_BAR;
+    const onsets = g.steps
+      .slice(from, to)
+      .filter((s) => s.notes.some((n) => n.hand === hand));
+    if (onsets.length < 2) return;
+
+    // Contexto: los últimos intervalos reales antes del compás.
+    const context = melodyIntervals(g.steps.slice(0, from)).slice(-model.order);
+    let prevTop = Math.max(...onsets[0].notes.filter((n) => n.hand === hand).map((n) => n.midi));
+
+    for (let i = 1; i < onsets.length; i++) {
+      const interval = model.sample(rng, context);
+      const nextTop = clampMidi(prevTop + interval);
+      const handNotes = onsets[i].notes.filter((n) => n.hand === hand);
+      const currentTop = Math.max(...handNotes.map((n) => n.midi));
+      const delta = nextTop - currentTop;
+      for (const n of handNotes) n.midi = clampMidi(n.midi + delta);
+      context.push(interval);
+      if (context.length > model.order) context.shift();
+      prevTop = nextTop;
+    }
+  };
+}
+
 export class GeneticTrainer {
   private readonly cfg: TrainConfig;
   private readonly rng: Rng;
   private population: Individual[] = [];
   private generation = 0;
+  private readonly corpusModel: MarkovModel | null;
+  private readonly mutators: ReadonlyArray<readonly [Mutator, number]>;
 
   constructor(cfg: TrainConfig) {
     this.cfg = { ...cfg, weights: { ...cfg.weights } };
     this.rng = mulberry32(cfg.seed);
+    this.corpusModel = cfg.corpus ? MarkovModel.fromJSON(cfg.corpus.model) : null;
+    this.mutators = this.corpusModel
+      ? [...MUTATORS, [makeCorpusLick(this.corpusModel), 0.2] as const]
+      : MUTATORS;
     // Arranque en caliente: hasta media población nace de piezas guardadas
     // (la primera copia de cada semilla va intacta; las demás, mutadas).
     const seeds = (cfg.seedGenomes ?? []).filter((s) => s.bars === cfg.bars);
@@ -220,7 +262,7 @@ export class GeneticTrainer {
       child.tempo = cfg.tempo;
       if (i >= seeds.length) {
         const mutations = randInt(this.rng, 1, 3);
-        for (let m = 0; m < mutations; m++) weightedPick(this.rng, MUTATORS)(this.rng, child);
+        for (let m = 0; m < mutations; m++) weightedPick(this.rng, this.mutators)(this.rng, child);
       }
       repairGenome(child);
       this.population.push({ genome: child, fitness: this.evaluate(child) });
@@ -230,6 +272,9 @@ export class GeneticTrainer {
   }
 
   private evaluate(genome: Genome): number {
+    if (this.corpusModel && this.cfg.corpus) {
+      return blendedReward(genome.steps, this.corpusModel, this.cfg.corpus.alpha, this.cfg.weights);
+    }
     return musicalReward(genome.steps, this.cfg.weights);
   }
 
@@ -273,7 +318,7 @@ export class GeneticTrainer {
           ? this.crossover(parentA.genome, this.tournament().genome)
           : cloneGenome(parentA.genome);
       const mutations = randInt(this.rng, 1, 3);
-      for (let m = 0; m < mutations; m++) weightedPick(this.rng, MUTATORS)(this.rng, child);
+      for (let m = 0; m < mutations; m++) weightedPick(this.rng, this.mutators)(this.rng, child);
       repairGenome(child);
       next.push({ genome: child, fitness: this.evaluate(child) });
     }

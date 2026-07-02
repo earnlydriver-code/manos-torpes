@@ -277,6 +277,84 @@ button.danger:hover:not(:disabled) {
   border-color: #e66767;
 }
 
+.corpus {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dropzone {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 18px;
+  text-align: center;
+  color: var(--text);
+  transition: border-color 0.15s;
+}
+
+.dropzone.drag-over {
+  border-color: var(--accent);
+}
+
+.dropzone p {
+  margin: 0 0 6px;
+}
+
+.file-button {
+  display: inline-block;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-h);
+}
+
+.file-button:hover {
+  border-color: var(--accent);
+}
+
+.learn-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-h);
+}
+
+.corpus-hint {
+  font-size: 12px;
+  color: var(--text);
+  margin: 6px 0 0;
+}
+
+.corpus-error {
+  margin: 0;
+  font-size: 13px;
+  color: #e66767;
+}
+
+.corpus ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.corpus li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--bg);
+}
+
 footer p {
   margin: 0;
   font-size: 13px;

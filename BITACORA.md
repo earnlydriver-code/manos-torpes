@@ -182,3 +182,44 @@ antes de corregir (regla: ante la duda, no es bug — los 4 se sostenían):
 
 También: un revisor dejó un archivo temporal de prueba dentro del repo
 (`__scratch_review.test.ts`); eliminado antes del commit.
+
+## 2026-07-01 (madrugada) — Fase 4: Etapa 2 «Estudiante» (aprender de música real)
+
+**Autor: Claude** (a petición del Usuario: "sigue con la fase 4")
+
+**Decisión de diseño — Markov en vez de LSTM:** la spec permite "LSTM pequeña o
+Markov de orden alto"; se eligió Markov de orden 3 sobre INTERVALOS de la voz
+superior (JS puro, `engine/markov.ts`). Motivos: invariante a transposición
+(aprende el dibujo melódico, no notas absolutas), sin dependencia de TF.js para
+el entrenamiento (el bundle no crece), rápido, determinista y testeable. La
+LSTM queda como mejora futura si el Markov se queda corto.
+
+**Cómo aprende de tu música (spec §5):**
+- `corpus/midi-import.ts`: cuantiza el MIDI a semicorcheas, parte en ventanas
+  de N compases, reparte manos por la mediana, asigna digitación canónica y
+  pasa TODO por el filtro físico (`repairGenome`) — el agente no imita notas
+  que sus manos no alcanzan; encuentra su propia digitación (línea de la spec).
+- `engine/corpus-blend.ts`: la recompensa de la Etapa 1 se MEZCLA (no se
+  sustituye) con la similitud estadística al corpus (α=0.35). Las trampas del
+  reward portado (silencio=-1, entropía<1.2) se respetan sin diluir.
+- Mutador nuevo `corpusLick`: re-escribe la melodía de un compás caminando con
+  intervalos muestreados del modelo (conserva el ritmo, inyecta el estilo).
+- Los fragmentos del corpus también siembran la población inicial.
+- UI: zona de arrastre MIDI/audio, lista de piezas del corpus con borrado,
+  checkbox «Aprender del corpus» (Etapa 2), persistente en IndexedDB v2.
+
+**MP3/WAV (experimental, spec §2):** Basic Pitch (Spotify, TF.js) corriendo en
+un Web Worker con barra de progreso. VERIFICADO en Node antes de cablear: una
+senoidal de 440 Hz se transcribe correctamente a MIDI 69 (La4); ~12 s por cada
+3 s de audio en CPU. El modelo (~900 KB) viaja empaquetado con la app — sin
+CDN. El tempo del audio se estima probando rejillas de 60-140 BPM. Límite de
+4 min por archivo y aviso en UI de que la transcripción es aproximada (la spec
+manda priorizar MIDI). Falta prueba end-to-end con grabaciones reales de piano:
+pendiente de que el Usuario pruebe con sus archivos.
+
+**Bug encontrado por los tests al construir:** el muestreo del Markov dependía
+del orden de inserción del Map, que cambia al pasar por JSON (las claves
+numéricas se reordenan) — misma semilla daba distinta música antes y después de
+guardar. Corregido con orden numérico fijo; el test de serialización lo cubre.
+
+Tests: 67 → 86 (Markov ×5, mezcla corpus ×7, import MIDI ×4, estimación BPM ×3).

@@ -74,7 +74,7 @@ export function useTrainer() {
   }, []);
 
   const start = useCallback(
-    (config: Pick<TrainConfig, 'bars' | 'tempo' | 'seedGenomes'>) => {
+    (config: Pick<TrainConfig, 'bars' | 'tempo' | 'seedGenomes' | 'corpus'>) => {
       const cfg: TrainConfig = {
         populationSize: 64,
         elitism: 6,

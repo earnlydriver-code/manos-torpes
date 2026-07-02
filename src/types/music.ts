@@ -30,6 +30,23 @@ export type RewardWeights = {
   entropy: number;
 };
 
+/**
+ * Modelo de Markov serializado (Etapa 2). Contexto = intervalos previos de la
+ * voz superior; tables[k] = conteos para contextos de longitud k.
+ */
+export type MarkovJson = {
+  order: number;
+  refLogP: number; // logP promedio del propio corpus (techo de la similitud)
+  uniformLogP: number; // logP de elegir al azar (suelo de la similitud)
+  tables: Record<string, Record<string, number>>[];
+};
+
+export type CorpusConfig = {
+  model: MarkovJson;
+  /** Peso de la similitud al corpus en la recompensa mezclada (0..1). */
+  alpha: number;
+};
+
 export type TrainConfig = {
   bars: 2 | 3 | 4;
   tempo: number; // 60..140 BPM
@@ -45,4 +62,6 @@ export type TrainConfig = {
    * corridas. Solo se usan las que coinciden en compases.
    */
   seedGenomes?: Genome[];
+  /** Etapa 2 «Estudiante»: mezcla la recompensa con similitud al corpus. */
+  corpus?: CorpusConfig;
 };
