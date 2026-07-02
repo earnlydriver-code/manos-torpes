@@ -223,3 +223,37 @@ numéricas se reordenan) — misma semilla daba distinta música antes y despué
 guardar. Corregido con orden numérico fijo; el test de serialización lo cubre.
 
 Tests: 67 → 86 (Markov ×5, mezcla corpus ×7, import MIDI ×4, estimación BPM ×3).
+
+## 2026-07-02 — Fase 5: Etapa 3 «Tu alumno» (feedback humano + cerebro)
+
+**Autor: Claude** (a petición del Usuario: "con fase 5 directo"; el Usuario no
+puede probar de inmediato — validado con tests y build, pendiente su oído)
+
+- **`engine/taste.ts`** — el RLHF casero de la spec §5: cada 👍/👎 sobre lo que
+  SUENA ajusta los PESOS de la recompensa (nunca la heurística interna).
+  Actualización exponencial tipo bandit (Hedge): el componente que destacaba en
+  lo que te gustó gana peso (η=0.25), con suelos y techos (3%–45%) para que
+  ninguna defensa muera ni ningún gusto domine, y renormalizado a suma 1.
+- Calificar funciona sobre lo que esté sonando: el mejor actual, un snapshot de
+  la máquina del tiempo o una pieza guardada. Si lo que suena cae en una trampa
+  (silencio/pocas notas), la calificación se rechaza con aviso — no enseña gusto.
+- **En caliente:** al calificar durante un entrenamiento, el worker recibe
+  `setWeights`, re-evalúa a TODA la población con la nueva vara de medir y
+  re-anuncia el mejor (el récord viejo ya no vale — se resetea bestSoFar).
+  Los entrenamientos nuevos parten de los pesos aprendidos.
+- **Cerebro exportable (spec §5):** «⬇ Descargar cerebro» baja un JSON con
+  gusto + piezas compuestas + corpus; «⬆ Cargar cerebro» lo restaura (el gusto
+  se reemplaza, piezas y corpus se suman). Validación de formato al importar.
+- Panel «Tu gusto»: barras con el peso actual de cada componente, contador de
+  calificaciones y botón «Olvidar mi gusto» (pesos de fábrica).
+- IndexedDB v3: almacén 'estado' clave-valor para el gusto.
+- **LEEME.txt del Escritorio actualizado** (petición del Usuario): tipos de
+  archivo aceptados y 4 sitios de MIDI gratis verificados (bitmidi.com,
+  mutopiaproject.org, freemidi.org, piano-midi.de).
+
+Tests: 86 → 91 (gusto ×5: dirección del update, suma 1, suelos/techos tras 100
+calificaciones, sin señal no hay cambio, estado inicial de la spec).
+
+**Con esto quedan completas las Fases 0–5. Falta la Fase 6:** pulido (code-
+splitting del bundle, rendimiento), modo dueto, y evaluar el experimento de la
+IA local como generador de semillas.

@@ -149,7 +149,15 @@ self.onmessage = (event: MessageEvent<MainToWorker>) => {
       genPerSecond = msg.genPerSecond;
       break;
     case 'setWeights':
-      trainer?.setWeights(msg.weights);
+      if (trainer) {
+        trainer.setWeights(msg.weights);
+        // Con la vara de medir nueva, el récord anterior ya no vale: se
+        // re-anuncia el mejor actual para que la UI no se quede con el viejo.
+        bestSoFar = -Infinity;
+        const stats = trainer.stats();
+        announceBest(stats.gen);
+        postProgress(stats, true);
+      }
       break;
     case 'requestSnapshot':
       if (trainer) postSnapshot(trainer.stats().gen);

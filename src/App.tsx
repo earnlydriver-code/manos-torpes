@@ -11,6 +11,11 @@ import { TrainerControls } from './components/TrainerControls';
 import { decodeAudioToMono22050, estimateBpm, transcribeAudio } from './corpus/audio-import';
 import { importFromNotes, parseMidiBuffer } from './corpus/midi-import';
 import { MarkovModel } from './engine/markov';
+import { rewardBreakdown } from './engine/reward-breakdown';
+import { defaultTaste, updateWeights } from './engine/taste';
+import type { Taste } from './engine/taste';
+import { exportBrain, importBrain, loadTaste, saveTaste } from './storage/brain';
+import { TastePanel } from './components/TastePanel';
 import { usePiano } from './hooks/usePiano';
 import { useTrainer } from './hooks/useTrainer';
 import type { Snapshot } from './hooks/useTrainer';
@@ -50,6 +55,14 @@ function App() {
   const [corpusBusy, setCorpusBusy] = useState<string | null>(null);
   const [corpusProgress, setCorpusProgress] = useState<number | null>(null);
   const [corpusError, setCorpusError] = useState<string | null>(null);
+  const [taste, setTaste] = useState<Taste>(defaultTaste);
+  const [tasteMessage, setTasteMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadTaste()
+      .then(setTaste)
+      .catch((err) => console.error('No se pudo cargar el gusto:', err));
+  }, []);
 
   const refreshLibrary = useCallback(() => {
     listPieces()
@@ -175,6 +188,7 @@ function App() {
     trainer.start({
       bars,
       tempo,
+      weights: taste.weights, // Etapa 3: tu gusto es la vara de medir
       seedGenomes: seeds.length > 0 ? seeds : undefined,
       corpus:
         learnFromCorpus && corpusModel
@@ -182,7 +196,7 @@ function App() {
           : undefined,
     });
     trainer.setThrottle(speed >= 50 ? null : speed * 2);
-  }, [trainer, bars, tempo, speed, warmStart, pieces, learnFromCorpus, corpusModel, corpusPieces]);
+  }, [trainer, bars, tempo, speed, warmStart, pieces, learnFromCorpus, corpusModel, corpusPieces, taste.weights]);
 
   const handleSave = useCallback(() => {
     if (!trainer.bestGenome || trainer.best === null) return;
@@ -211,6 +225,74 @@ function App() {
     handleStopPlayback();
     trainer.reset();
   }, [handleStopPlayback, trainer]);
+
+  /** El genoma que está sonando ahora mismo (para calificarlo). */
+  const playingGenome = useCallback((): Genome | null => {
+    if (!playing) return null;
+    if (playing.kind === 'best') return trainer.bestGenome;
+    if (playing.kind === 'snapshot')
+      return trainer.snapshots.find((s) => s.gen === playing.gen)?.genome ?? null;
+    return pieces.find((p) => p.id === playing.id)?.genome ?? null;
+  }, [playing, trainer.bestGenome, trainer.snapshots, pieces]);
+
+  const handleRate = useCallback(
+    (rating: 1 | -1) => {
+      const genome = playingGenome();
+      if (!genome) return;
+      const breakdown = rewardBreakdown(genome.steps, taste.weights);
+      if (breakdown.mode !== 'completo') {
+        setTasteMessage('Esa pieza cae en una trampa (silencio o pocas notas): no enseña gusto.');
+        return;
+      }
+      const weights = updateWeights(taste.weights, breakdown.components, rating);
+      const next: Taste = { weights, ratings: taste.ratings + 1 };
+      setTaste(next);
+      setTasteMessage(rating === 1 ? 'Anotado: más de esto. 👍' : 'Anotado: menos de esto. 👎');
+      saveTaste(next).catch((err) => console.error('No se pudo guardar el gusto:', err));
+      trainer.setWeights(weights); // en caliente: la población se re-evalúa
+    },
+    [playingGenome, taste, trainer],
+  );
+
+  const handleTasteReset = useCallback(() => {
+    const next = defaultTaste();
+    setTaste(next);
+    setTasteMessage('Gusto olvidado: pesos de fábrica.');
+    saveTaste(next).catch((err) => console.error('No se pudo guardar el gusto:', err));
+    trainer.setWeights(next.weights);
+  }, [trainer]);
+
+  const handleBrainExport = useCallback(() => {
+    exportBrain()
+      .then((brain) => {
+        const blob = new Blob([JSON.stringify(brain)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `cerebro-manos-torpes-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setTasteMessage('Cerebro descargado: gusto + piezas + corpus.');
+      })
+      .catch((err) => setTasteMessage(`No se pudo exportar: ${err.message ?? err}`));
+  }, []);
+
+  const handleBrainImport = useCallback(
+    (file: File) => {
+      file
+        .text()
+        .then((text) => importBrain(JSON.parse(text)))
+        .then(async ({ pieces: np, corpus: nc }) => {
+          setTaste(await loadTaste());
+          refreshLibrary();
+          setTasteMessage(`Cerebro cargado: gusto restaurado, +${np} piezas, +${nc} del corpus.`);
+        })
+        .catch((err) =>
+          setTasteMessage(`No se pudo cargar: ${err instanceof Error ? err.message : err}`),
+        );
+    },
+    [refreshLibrary],
+  );
 
   useEffect(() => stopPlayback, []); // limpiar el Transport al desmontar
 
@@ -281,6 +363,16 @@ function App() {
         canPlay={audioReady}
         onPlay={(s: Snapshot) => playPiece(s.genome, { kind: 'snapshot', gen: s.gen })}
         onStop={handleStopPlayback}
+      />
+
+      <TastePanel
+        taste={taste}
+        canRate={playing !== null}
+        onRate={handleRate}
+        onReset={handleTasteReset}
+        onExport={handleBrainExport}
+        onImport={handleBrainImport}
+        message={tasteMessage}
       />
 
       <RewardPanel history={trainer.history} breakdown={trainer.breakdown} />

@@ -28,9 +28,10 @@ export type SavedCorpusPiece = {
 };
 
 const DB_NAME = 'manos-torpes';
-const DB_VERSION = 2; // v2: + almacén 'corpus' (Fase 4)
+const DB_VERSION = 3; // v2: + 'corpus' (Fase 4) · v3: + 'estado' (gusto, Fase 5)
 const STORE_PIECES = 'piezas';
 const STORE_CORPUS = 'corpus';
+const STORE_STATE = 'estado';
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -40,6 +41,9 @@ function openDb(): Promise<IDBDatabase> {
         if (!req.result.objectStoreNames.contains(store)) {
           req.result.createObjectStore(store, { keyPath: 'id', autoIncrement: true });
         }
+      }
+      if (!req.result.objectStoreNames.contains(STORE_STATE)) {
+        req.result.createObjectStore(STORE_STATE, { keyPath: 'key' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -100,4 +104,17 @@ export function listCorpusPieces(): Promise<SavedCorpusPiece[]> {
 
 export function deleteCorpusPiece(id: number): Promise<void> {
   return tx(STORE_CORPUS, 'readwrite', (store) => store.delete(id)).then(() => undefined);
+}
+
+/** Estado pequeño clave-valor (el gusto de la Etapa 3, y lo que venga). */
+export function saveState<T>(key: string, value: T): Promise<void> {
+  return tx(STORE_STATE, 'readwrite', (store) => store.put({ key, value })).then(() => undefined);
+}
+
+export function loadState<T>(key: string): Promise<T | null> {
+  return tx(
+    STORE_STATE,
+    'readonly',
+    (store) => store.get(key) as IDBRequest<{ key: string; value: T } | undefined>,
+  ).then((row) => (row ? row.value : null));
 }

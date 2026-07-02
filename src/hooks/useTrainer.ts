@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_WEIGHTS } from '../engine/constants';
 import type { RewardBreakdown } from '../engine/reward-breakdown';
-import type { Genome, TrainConfig } from '../types/music';
+import type { Genome, RewardWeights, TrainConfig } from '../types/music';
 import type { MainToWorker, WorkerToMain } from '../workers/protocol';
 
 export type TrainerState = 'sin-iniciar' | 'entrenando' | 'pausado';
@@ -74,7 +74,11 @@ export function useTrainer() {
   }, []);
 
   const start = useCallback(
-    (config: Pick<TrainConfig, 'bars' | 'tempo' | 'seedGenomes' | 'corpus'>) => {
+    (
+      config: Pick<TrainConfig, 'bars' | 'tempo' | 'seedGenomes' | 'corpus'> & {
+        weights?: RewardWeights;
+      },
+    ) => {
       const cfg: TrainConfig = {
         populationSize: 64,
         elitism: 6,
@@ -125,6 +129,12 @@ export function useTrainer() {
     [send],
   );
 
+  /** Etapa 3: el gusto cambia los pesos EN CALIENTE (re-evalúa la población). */
+  const setWeights = useCallback(
+    (weights: RewardWeights) => send({ type: 'setWeights', weights }),
+    [send],
+  );
+
   return {
     state,
     gen,
@@ -138,5 +148,6 @@ export function useTrainer() {
     resume,
     reset,
     setThrottle,
+    setWeights,
   };
 }

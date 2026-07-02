@@ -337,6 +337,77 @@ button.danger:hover:not(:disabled) {
   color: #e66767;
 }
 
+.taste {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.taste-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+button.rate.like:hover:not(:disabled) {
+  border-color: #199e70;
+}
+
+button.rate.dislike:hover:not(:disabled) {
+  border-color: #e66767;
+}
+
+.taste-message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.taste-weights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 6px 18px;
+}
+
+.taste-weight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.taste-label {
+  width: 92px;
+  color: var(--text);
+}
+
+.taste-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.taste-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: #3987e5;
+}
+
+.taste-pct {
+  width: 36px;
+  text-align: right;
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+}
+
 .corpus ul {
   list-style: none;
   margin: 0;
