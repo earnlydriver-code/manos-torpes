@@ -463,6 +463,39 @@ Tests: 117 → 119. Pendiente que el Usuario re-pruebe: la LSTM debería decir
 "entrenando… → lista" y los solapes desaparecer. (Nota: tiene Naruto duplicado
 en el corpus — cuenta doble, se le avisó.)
 
+## 2026-07-03 — Mejora 4/4: COMPOSITORA INVITADA (Ollama) — plan de 4 completo
+
+**Autores: Usuario (la idea original: "¿y si conectamos una IA? tengo varias
+en mi PC"; delegó la elección del modelo) + Claude (diseño, implementación y
+elección razonada)**
+
+- **Arquitectura "la invitada propone, la física dispone":** la IA local
+  escribe una frase de 2 compases en JSON (rejilla de semicorcheas, melodía +
+  bajo) y pasa por el MISMO pipeline físico que un MIDI real
+  (importFromNotes → repair → validate): sale con manos humanas o no sale.
+  Sus piezas van a la BIBLIOTECA como semillas del próximo entrenamiento —
+  deliberadamente NO al corpus (los modelos de melodía/acordes solo aprenden
+  de música real; la invitada inspira, no enseña).
+- **Elección de modelo (medida, no de oídas):** el Usuario tiene 4 generativos
+  instalados. Elegido `qwen2.5-coder:7b` — los modelos de código son los más
+  fiables emitiendo JSON estricto (nuestra interfaz ES una partitura JSON), la
+  base qwen2.5 trae teoría musical decente, y 7B corre bien en su PC.
+  Verificado end-to-end contra su Ollama real: JSON válido a la primera
+  (86 s con carga del modelo incluida), escala melancólica en Do menor
+  coherente. Los demás quedan en el desplegable: deepseek-r1 soportado (el
+  parser quita sus bloques <think>), dolphin-llama3 y mateo-v4 disponibles;
+  nomic-embed excluido (no genera).
+- **Parseo robusto testeado:** <think>, vallas ```json, texto alrededor,
+  campos fuera de rango (se recortan), basura/JSON roto/pocas notas ⇒ error
+  claro sin explotar. UI: selector de modelo + campo de estilo libre
+  ("triste y lento", "épico"...) + resultado con la nota de la heurística.
+- **Timeouts falsos en la suite:** el GA (orden 5 + armonía + más mutadores)
+  roza los 5 s por defecto de vitest en paralelo — subido a 120 s
+  (eran timeouts, no bugs; verificado en serie).
+
+Tests: 119 → 126. **El plan post-spec de 4 mejoras queda COMPLETO:**
+1/4 acordes ✅ · 2/4 estiramientos con contexto ✅ · 3/4 LSTM ✅ · 4/4 invitada ✅.
+
 ## Ideas anotadas durante las pruebas del Usuario (2026-07-02)
 
 - **Idea (Usuario): estiramientos "que valgan la pena".** Hoy el trade-off es

@@ -9,8 +9,12 @@ import { LibraryPanel } from './components/LibraryPanel';
 import { RewardPanel } from './components/RewardPanel';
 import { TrainerControls } from './components/TrainerControls';
 import { decodeAudioToMono22050, estimateBpm, transcribeAudio } from './corpus/audio-import';
+import { generateGuestPhrase, listGuestModels, pickPreferredModel } from './corpus/guest';
+import type { GuestModel } from './corpus/guest';
+import { GuestComposer } from './components/GuestComposer';
 import { importFromNotes, parseMidiBuffer } from './corpus/midi-import';
 import { suggestTraining } from './corpus/suggest';
+import { musicalReward } from './engine/reward';
 import { ChordModel, chordSequence } from './engine/chords';
 import { MarkovModel, melodyIntervals } from './engine/markov';
 import { rewardBreakdown } from './engine/reward-breakdown';
@@ -61,6 +65,17 @@ function App() {
   const [corpusError, setCorpusError] = useState<string | null>(null);
   const [taste, setTaste] = useState<Taste>(defaultTaste);
   const [tasteMessage, setTasteMessage] = useState<string | null>(null);
+  const [guestModels, setGuestModels] = useState<GuestModel[]>([]);
+  const [guestModel, setGuestModel] = useState<string | null>(null);
+  const [guestBusy, setGuestBusy] = useState(false);
+  const [guestMessage, setGuestMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    void listGuestModels().then((models) => {
+      setGuestModels(models);
+      setGuestModel(pickPreferredModel(models));
+    });
+  }, []);
 
   useEffect(() => {
     loadTaste()
@@ -349,6 +364,47 @@ function App() {
     trainer.reset();
   }, [handleStopPlayback, trainer]);
 
+  const handleGuestCompose = useCallback(
+    (style: string) => {
+      if (!guestModel) return;
+      setGuestBusy(true);
+      setGuestMessage(`Esperando a ${guestModel}… (un modelo local puede tardar un minuto)`);
+      void (async () => {
+        try {
+          const rawNotes = await generateGuestPhrase({
+            model: guestModel,
+            style,
+            tempo: effTempo,
+          });
+          // El filtro físico de siempre: la invitada propone, las manos disponen.
+          const piece = importFromNotes('invitada', rawNotes, effTempo, 'midi');
+          const genome = piece.windowsByBars[2][0] ?? piece.windows[0];
+          if (!genome) throw new Error('la frase no sobrevivió al filtro físico (muy dispersa)');
+          const reward = musicalReward(genome.steps, taste.weights);
+          const shortModel = guestModel.split(':')[0];
+          await savePiece({
+            name: `Invitada: ${shortModel}${style ? ` (${style.slice(0, 30)})` : ''}`,
+            createdAt: Date.now(),
+            gen: 0,
+            reward,
+            genome,
+          });
+          refreshLibrary();
+          setGuestMessage(
+            `Frase guardada en «Piezas guardadas» (nota de la heurística: ${reward.toFixed(2)}). Escúchala ahí — y sembrará el próximo entrenamiento con «Partir de lo aprendido».`,
+          );
+        } catch (err) {
+          setGuestMessage(
+            `No salió: ${err instanceof Error ? err.message : String(err)}. Prueba otra vez u otro modelo.`,
+          );
+        } finally {
+          setGuestBusy(false);
+        }
+      })();
+    },
+    [guestModel, effTempo, taste.weights, refreshLibrary],
+  );
+
   /** El genoma que está sonando ahora mismo (para calificarlo). */
   const playingGenome = useCallback((): Genome | null => {
     if (!playing) return null;
@@ -514,6 +570,15 @@ function App() {
         onFiles={(files) => void handleCorpusFiles(files)}
         onDelete={handleCorpusDelete}
         onLearnChange={setLearnFromCorpus}
+      />
+
+      <GuestComposer
+        models={guestModels}
+        selected={guestModel}
+        busy={guestBusy}
+        message={guestMessage}
+        onSelect={setGuestModel}
+        onCompose={handleGuestCompose}
       />
 
       <LibraryPanel

@@ -6,5 +6,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/__tests__/**/*.test.ts'],
+    // Los tests del GA corren cientos de generaciones y compiten por CPU en
+    // paralelo: el límite por defecto (5 s) daba timeouts falsos, no bugs.
+    testTimeout: 120_000,
   },
 });

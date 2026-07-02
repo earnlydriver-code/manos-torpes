@@ -414,6 +414,44 @@ button.rate.dislike:hover:not(:disabled) {
   color: var(--text);
 }
 
+.guest {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guest-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.guest-row select,
+.guest-row input[type='text'] {
+  font: inherit;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.guest-row input[type='text'] {
+  flex: 1;
+  min-width: 220px;
+}
+
+.guest-message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
 .corpus ul {
   list-style: none;
   margin: 0;
