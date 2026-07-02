@@ -437,6 +437,32 @@ Markov de orden alto, fallback a Markov puro").
 Tests: 114 → 117 (equivalencia TF.js, aprendizaje de frase larga, fallback,
 GA con LSTM determinista y legal). Bench de la spec verde (34 s).
 
+## 2026-07-03 — Prueba de la 3/4: dos bugs cazados por el Usuario (y corregidos)
+
+**Autores: Usuario (reportó "notas que se sobreponen constantemente" y que la
+LSTM decía "corpus pequeño" con 8 piezas/226 fragmentos) + Claude**
+
+1. **Agujero físico — la misma tecla dos veces:** el modelo permitía que las
+   dos manos pisaran la MISMA tecla a la vez (imposible: es una sola tecla) y
+   que una nota se re-pisara mientras la anterior seguía sonando (el martillo
+   real corta la nota anterior). Se oía como doblaje fantasma / solapes.
+   · `validateStep`: tecla única entre AMBAS manos (antes solo por mano).
+   · `repairGenome` paso A2: al re-pisar una tecla, la nota anterior se trunca
+     en ese instante. Aplica también al corpus importado (verificado: 0
+     solapes en Naruto/Queen/Pirates tras el arreglo).
+2. **La LSTM nunca entrenó en la app** (por eso "compone el modelo simple" con
+   corpus grande): la primera carga dinámica de TF.js dispara la
+   re-optimización del dev server, que RECARGA la página y mata el intento; el
+   estado quedaba en respaldo sin reintentar. Arreglos: TF.js pre-bundleado
+   (optimizeDeps), 3 reintentos con espera, y estado 'error' separado de
+   'respaldo' con mensaje claro en la UI.
+3. El test de equivalencia LSTM volvió a ser flaky (init de TF.js sin sembrar):
+   aserción cambiada a "probabilidad ≥5x azar y top-3" — 3 corridas estables.
+
+Tests: 117 → 119. Pendiente que el Usuario re-pruebe: la LSTM debería decir
+"entrenando… → lista" y los solapes desaparecer. (Nota: tiene Naruto duplicado
+en el corpus — cuenta doble, se le avisó.)
+
 ## Ideas anotadas durante las pruebas del Usuario (2026-07-02)
 
 - **Idea (Usuario): estiramientos "que valgan la pena".** Hoy el trade-off es

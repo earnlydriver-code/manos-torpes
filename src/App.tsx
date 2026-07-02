@@ -107,9 +107,9 @@ function App() {
   // vez por corpus (con caché en IndexedDB por firma) y viaja como pesos JSON
   // al worker. Hasta que está lista, el Markov compone (fallback de la spec).
   const [lstm, setLstm] = useState<LstmJson | null>(null);
-  const [lstmStatus, setLstmStatus] = useState<'sin-corpus' | 'entrenando' | 'lista' | 'respaldo'>(
-    'sin-corpus',
-  );
+  const [lstmStatus, setLstmStatus] = useState<
+    'sin-corpus' | 'entrenando' | 'lista' | 'respaldo' | 'error'
+  >('sin-corpus');
   useEffect(() => {
     if (corpusPieces.length === 0) {
       setLstm(null);
@@ -138,8 +138,21 @@ function App() {
             return source.map((w) => melodyIntervals(w.steps));
           })
           .filter((iv) => iv.length >= 4);
-        const { trainLstm } = await import('./corpus/lstm-train');
-        const weights = await trainLstm(seqs);
+        // Hasta 3 intentos: en dev, la primera carga de TF.js puede provocar
+        // una re-optimización del server que aborta el intento en curso.
+        let weights: LstmJson | null = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const { trainLstm } = await import('./corpus/lstm-train');
+            weights = await trainLstm(seqs);
+            break;
+          } catch (err) {
+            console.error(`LSTM intento ${attempt}/3 falló:`, err);
+            if (attempt === 3) throw err;
+            await new Promise((r) => setTimeout(r, 1500 * attempt));
+            if (cancelled) return;
+          }
+        }
         if (cancelled) return;
         if (weights) {
           setLstm(weights);
@@ -147,13 +160,13 @@ function App() {
           await saveState('lstm', { signature, weights });
         } else {
           setLstm(null);
-          setLstmStatus('respaldo'); // corpus muy pequeño: compone el Markov
+          setLstmStatus('respaldo'); // corpus de verdad pequeño: compone el Markov
         }
       } catch (err) {
         console.error('No se pudo entrenar la LSTM (composición con Markov):', err);
         if (!cancelled) {
           setLstm(null);
-          setLstmStatus('respaldo');
+          setLstmStatus('error');
         }
       }
     })();

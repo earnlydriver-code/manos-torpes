@@ -14,6 +14,11 @@ export type StepValidation = { legal: boolean; reason?: string };
 export function validateStep(notes: NoteEvent[]): StepValidation {
   if (notes.length > MAX_TOTAL_NOTES) return { legal: false, reason: 'more_than_10_notes' };
 
+  // Una tecla es UNA tecla: dos manos no pueden pisarla a la vez (el Usuario
+  // lo oyó como "notas sobrepuestas" — doblaje fantasma de la misma nota).
+  if (new Set(notes.map((n) => n.midi)).size !== notes.length)
+    return { legal: false, reason: 'key_reused' };
+
   for (const hand of ['L', 'R'] as const) {
     const handNotes = notes.filter((n) => n.hand === hand);
     if (handNotes.length === 0) continue;

@@ -12,7 +12,7 @@ type Props = {
   busy: string | null; // nombre del archivo procesándose, o null
   progress: number | null; // % de transcripción de audio, o null
   error: string | null;
-  lstmStatus: 'sin-corpus' | 'entrenando' | 'lista' | 'respaldo';
+  lstmStatus: 'sin-corpus' | 'entrenando' | 'lista' | 'respaldo' | 'error';
   learnFromCorpus: boolean;
   trainerRunning: boolean;
   onFiles: (files: File[]) => void;
@@ -22,9 +22,10 @@ type Props = {
 
 const LSTM_LABEL: Record<Props['lstmStatus'], string | null> = {
   'sin-corpus': null,
-  entrenando: '🧠 Aprendiendo frases largas (LSTM)…',
-  lista: '🧠 Frases largas: LSTM lista',
-  respaldo: '🧠 Corpus pequeño: compone el modelo simple',
+  entrenando: '🧠 Aprendiendo frases largas (LSTM)… puede tardar 1-2 min',
+  lista: '🧠 Frases largas: LSTM lista ✓',
+  respaldo: '🧠 Corpus pequeño para la LSTM: compone el modelo simple',
+  error: '🧠 La LSTM no pudo entrenar (mira la consola F12) — compone el modelo simple',
 };
 
 export function CorpusPanel({

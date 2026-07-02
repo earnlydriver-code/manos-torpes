@@ -119,6 +119,27 @@ describe('repairGenome', () => {
     expect(g.steps[0].notes[0].durSteps).toBe(4);
   });
 
+  it('una tecla pisada por las DOS manos a la vez es ilegal (repair la resuelve)', () => {
+    const g = emptyGenome();
+    g.steps[0].notes = [
+      { midi: 60, hand: 'L', finger: 1, durSteps: 2, vel: 0.9 },
+      { midi: 60, hand: 'R', finger: 1, durSteps: 2, vel: 0.4 },
+    ];
+    expect(validateStep(g.steps[0].notes).legal).toBe(false);
+    repairGenome(g);
+    expect(g.steps[0].notes.length).toBe(1);
+    expect(g.steps[0].notes[0].vel).toBe(0.9);
+  });
+
+  it('re-pisar una tecla corta la nota anterior (no hay solapes de la misma nota)', () => {
+    const g = emptyGenome();
+    g.steps[0].notes = [{ midi: 60, hand: 'L', finger: 1, durSteps: 12, vel: 0.8 }];
+    g.steps[4].notes = [{ midi: 60, hand: 'R', finger: 1, durSteps: 4, vel: 0.8 }];
+    repairGenome(g);
+    expect(g.steps[0].notes[0].durSteps).toBe(4); // termina donde re-empieza
+    expect(g.steps[4].notes.length).toBe(1);
+  });
+
   it('es idempotente: reparar un genoma ya reparado no cambia nada', () => {
     const rng = mulberry32(555);
     for (let i = 0; i < 20; i++) {

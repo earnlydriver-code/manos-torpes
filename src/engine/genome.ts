@@ -60,7 +60,8 @@ function combinedShapeLegal(heldNotes: NoteEvent[], newNotes: NoteEvent[], hand:
  *     ese onset se elimina — nada de teletransportes.
  */
 export function repairGenome(g: Genome): Genome {
-  // Paso A: legalidad de cada step aislado (forma de manos, cruce, ≤10 notas).
+  // Paso A: legalidad de cada step aislado (forma de manos, cruce, ≤10 notas,
+  // una tecla una sola vez).
   for (const s of g.steps) {
     let verdict = validateStep(s.notes);
     while (!verdict.legal && s.notes.length > 0) {
@@ -68,6 +69,21 @@ export function repairGenome(g: Genome): Genome {
       for (let i = 1; i < s.notes.length; i++) if (s.notes[i].vel < s.notes[worst].vel) worst = i;
       s.notes.splice(worst, 1);
       verdict = validateStep(s.notes);
+    }
+  }
+
+  // Paso A2: la misma tecla no puede seguir sonando cuando se vuelve a pisar
+  // (el martillo real la re-golpea: la nota anterior TERMINA ahí). Sin esto
+  // las notas se solapan en el audio — "sobrepuestas", lo oyó el Usuario.
+  const sounding = new Map<number, { note: NoteEvent; onsetStep: number }>();
+  for (const s of g.steps) {
+    for (const [midi, held] of sounding) {
+      if (held.onsetStep + held.note.durSteps <= s.step) sounding.delete(midi);
+    }
+    for (const n of s.notes) {
+      const held = sounding.get(n.midi);
+      if (held) held.note.durSteps = Math.max(1, s.step - held.onsetStep);
+      sounding.set(n.midi, { note: n, onsetStep: s.step });
     }
   }
 
