@@ -11,7 +11,7 @@ import { TrainerControls } from './components/TrainerControls';
 import { decodeAudioToMono22050, estimateBpm, transcribeAudio } from './corpus/audio-import';
 import { importFromNotes, parseMidiBuffer } from './corpus/midi-import';
 import { suggestTraining } from './corpus/suggest';
-import { MarkovModel } from './engine/markov';
+import { MarkovModel, melodyIntervals } from './engine/markov';
 import { rewardBreakdown } from './engine/reward-breakdown';
 import { defaultTaste, updateWeights } from './engine/taste';
 import type { Taste } from './engine/taste';
@@ -76,9 +76,22 @@ function App() {
 
   useEffect(refreshLibrary, [refreshLibrary]);
 
-  // Modelo de la Etapa 2: se re-entrena (rápido, son conteos) al cambiar el corpus.
+  // Modelo de la Etapa 2: se re-entrena (rápido, son conteos) al cambiar el
+  // corpus. Las melodías se RE-EXTRAEN de los fragmentos guardados en vez de
+  // usar las melodySeqs almacenadas: así las piezas importadas antes del
+  // arreglo del extractor (bug del ping-pong) se curan solas, sin re-importar.
   const corpusModel = useMemo(() => {
-    const seqs = corpusPieces.flatMap((p) => p.melodySeqs);
+    const seqs = corpusPieces
+      .flatMap((p) => {
+        const source =
+          p.windowsByBars && p.windowsByBars[4].length > 0
+            ? p.windowsByBars[4]
+            : (p.windowsByBars?.[3].length ?? 0) > 0
+              ? p.windowsByBars![3]
+              : p.windows;
+        return source.map((w) => melodyIntervals(w.steps));
+      })
+      .filter((iv) => iv.length >= 4);
     if (seqs.length === 0) return null;
     const model = new MarkovModel(3);
     model.train(seqs);

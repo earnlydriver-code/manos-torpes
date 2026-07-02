@@ -17,15 +17,17 @@ function clampInterval(iv: number): number {
 }
 
 /**
- * Voz superior de una secuencia de steps → intervalos entre onsets
- * consecutivos (misma convención que melodicContour: nota más aguda por step
- * con notas). Es la representación que el modelo entrena y puntúa.
+ * MELODÍA = voz superior de la MANO DERECHA. Mezclar manos fue el bug que
+ * arruinó la Etapa 2: cuando la derecha descansaba, "la nota más aguda"
+ * saltaba al bajo y el modelo aprendía saltos falsos de dos octavas — que el
+ * agente luego explotaba en bucle (ping-pong ±24 con similitud perfecta).
  */
 export function melodyIntervals(seq: Step[]): number[] {
   const tops: number[] = [];
   for (const s of seq) {
-    if (s.notes.length === 0) continue;
-    tops.push(Math.max(...s.notes.map((n) => n.midi)));
+    const right = s.notes.filter((n) => n.hand === 'R');
+    if (right.length === 0) continue;
+    tops.push(Math.max(...right.map((n) => n.midi)));
   }
   const intervals: number[] = [];
   for (let i = 1; i < tops.length; i++) intervals.push(clampInterval(tops[i] - tops[i - 1]));
@@ -83,6 +85,23 @@ export class MarkovModel {
       return Math.log((count + 0.5) / (total + 0.5 * SYMBOLS)); // Laplace suave
     }
     return this.uniformLogP;
+  }
+
+  /**
+   * Entropía (bits) de la distribución de intervalos del corpus entero —
+   * la "variedad melódica" de la música real. Se deriva de los conteos de
+   * orden 0, así que sobrevive a serializar sin campos nuevos.
+   */
+  get refEntropy(): number {
+    const row = this.tables[0].get('');
+    const total = this.totals[0].get('');
+    if (!row || !total) return 0;
+    let h = 0;
+    for (const count of row.values()) {
+      const p = count / total;
+      h -= p * Math.log2(p);
+    }
+    return h;
   }
 
   /** logP promedio por símbolo de una secuencia de intervalos. */

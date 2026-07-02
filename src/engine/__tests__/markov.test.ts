@@ -49,11 +49,23 @@ describe('MarkovModel', () => {
     expect(revived.sample(a, [2])).toBe(model.sample(b, [2]));
   });
 
-  it('melodyIntervals extrae la voz superior (misma convención que el contorno)', () => {
+  it('melodyIntervals extrae la voz superior DE LA MANO DERECHA', () => {
     const seq = emptySeq(16);
-    seq[0].notes.push(note(60, 'R', 1), note(48, 'L', 5)); // top: 60
+    seq[0].notes.push(note(60, 'R', 1), note(48, 'L', 5)); // top R: 60
     seq[4].notes.push(note(64, 'R', 3)); // +4
     seq[8].notes.push(note(62, 'R', 2)); // -2
     expect(melodyIntervals(seq)).toEqual([4, -2]);
+  });
+
+  it('regresión ping-pong: los steps solo-izquierda NO contaminan la melodía', () => {
+    // El bug: cuando la derecha descansa, "la nota más aguda" era el bajo y
+    // aparecían saltos falsos de dos octavas en la melodía aprendida.
+    const seq = emptySeq(16);
+    seq[0].notes.push(note(84, 'R', 5));
+    seq[2].notes.push(note(48, 'L', 5)); // bajo solo: antes metía -36→clamp -24
+    seq[4].notes.push(note(83, 'R', 4));
+    seq[6].notes.push(note(50, 'L', 3)); // bajo solo
+    seq[8].notes.push(note(81, 'R', 3));
+    expect(melodyIntervals(seq)).toEqual([-1, -2]); // solo la derecha
   });
 });

@@ -283,6 +283,36 @@ Tests: 91 → 96 (sugerencia ×4 + corte multi-tamaño). Nota: las piezas que el
 Usuario ya importó conviene RE-IMPORTARLAS (borrar + arrastrar de nuevo) para
 que tengan cortes de 3/4 compases y BPM real.
 
+## 2026-07-02 — EXPLOIT cazado por el oído del Usuario (y corregido)
+
+**Autores: Usuario (detección) + Claude (diagnóstico y arreglo)**
+
+El Usuario reportó que con corpus "no crea nada lógico" incluso tras 15 min de
+entrenamiento. El diagnóstico con su MIDI real (Sadness and Sorrow) reveló un
+exploit de manual — la spec §8 avisaba: "el agente encuentra la trampa de la
+métrica antes que la música":
+
+- **Causa raíz:** `melodyIntervals` tomaba la nota más aguda de cada step SIN
+  distinguir manos. Cuando la derecha descansaba, "la melodía" saltaba al bajo
+  ⇒ el modelo aprendió saltos falsos de ±2 octavas como rasgo del estilo ⇒ el
+  agente descubrió que un ping-pong infinito de dos octavas (alternando manos,
+  físicamente gratis) puntuaba similitud 1.000 y recompensa 0.849. Sonaba
+  horrible con nota perfecta.
+- **Arreglo 1:** melodía = voz superior de la MANO DERECHA solamente.
+- **Arreglo 2 (defensa nueva):** la similitud se escala por DIVERSIDAD de
+  intervalos comparada con la del corpus (un bucle de 2 intervalos ya no puede
+  puntuar como música real, por probable que sea).
+- **Curación automática:** el modelo se reconstruye desde los fragmentos
+  guardados re-extrayendo melodías con el extractor corregido — las piezas ya
+  importadas se curan solas, sin re-importar.
+- **Verificación con el MIDI real (mismo experimento, 3000 gens):** el mejor
+  pasó de ping-pong ±24 a un motivo con repetición variada
+  (-7,3,-1,-9,9,2 → repetido → variado), contorno 0.28→0.43, sim honesta 0.85.
+- Regla de la casa cumplida: el exploit quedó como test de regresión
+  (ping-pong ≤0.45 de similitud; melodías solo-izquierda no contaminan).
+
+Tests: 96 → 99.
+
 ## Ideas anotadas durante las pruebas del Usuario (2026-07-02)
 
 - **Idea (Usuario): estiramientos "que valgan la pena".** Hoy el trade-off es

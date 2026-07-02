@@ -39,7 +39,12 @@ describe('corpusSimilarity + blendedReward', () => {
     const stepwise = melodicGenomeSteps([2, 2, 1, 2, 2, 2, 1]);
     const jumpy = melodicGenomeSteps([11, -9, 14, -17, 13, -8, 16]);
     expect(corpusSimilarity(stepwise, model)).toBeGreaterThan(corpusSimilarity(jumpy, model));
-    expect(corpusSimilarity(stepwise, model)).toBeGreaterThan(0.5);
+    // 0.35 y no 0.5: el factor de diversidad (anti ping-pong) descuenta a las
+    // melodías de solo dos tipos de intervalo, aunque sean muy probables.
+    expect(corpusSimilarity(stepwise, model)).toBeGreaterThan(0.35);
+    // Una melodía con la variedad del corpus sí puntúa alto.
+    const rich = melodicGenomeSteps([2, 2, 1, -1, -2, 4, 3, -2, -2, 2, 1, 2]);
+    expect(corpusSimilarity(rich, model)).toBeGreaterThan(0.5);
   });
 
   it('sin material melódico (<4 intervalos) la similitud es 0', () => {
@@ -71,6 +76,31 @@ describe('corpusSimilarity + blendedReward', () => {
       0.65 * base + 0.35 * corpusSimilarity(stepwise, model),
       12,
     );
+  });
+});
+
+describe('anti-exploit de similitud (bug cazado por el Usuario, 2026-07-02)', () => {
+  it('un bucle degenerado de 2 intervalos NO puede puntuar como el corpus', () => {
+    // Corpus con algunos saltos grandes (como la cuantización real produce).
+    const model = new MarkovModel(3);
+    model.train([
+      [2, 2, 1, -24, 24, -2, 2, 1],
+      [2, -5, -2, -24, 24, 8, -1, 3],
+      [4, 3, -2, -22, 23, 2, 1, -1],
+      [-2, -2, -1, 2, 24, -24, 1, 2],
+    ]);
+    // El exploit que el agente encontró: ping-pong ±24 en bucle infinito.
+    const pingPong = emptySeq(32);
+    let high = true;
+    for (let t = 0; t < 32; t += 2) {
+      pingPong[t].notes.push(note(high ? 84 : 60, 'R', high ? 5 : 1));
+      high = !high;
+    }
+    const exploit = corpusSimilarity(pingPong, model);
+    // Y una melodía honesta con la variedad del corpus.
+    const honest = melodicGenomeSteps([2, 2, 1, -24, 24, -2, 2, 1, 4, 3, -2]);
+    expect(exploit).toBeLessThan(0.45); // el factor de diversidad lo aplasta
+    expect(corpusSimilarity(honest, model)).toBeGreaterThan(exploit);
   });
 });
 
