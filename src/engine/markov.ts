@@ -38,6 +38,10 @@ type Table = Map<string, Map<number, number>>;
 
 export class MarkovModel {
   readonly order: number;
+  /** Contexto que usa al muestrear (interfaz común con la LSTM compositora). */
+  get contextLen(): number {
+    return this.order;
+  }
   private tables: Table[]; // tables[k]: contextos de longitud k
   private totals: Map<string, number>[]; // suma de conteos por contexto
   refLogP = 0;

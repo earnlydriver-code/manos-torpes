@@ -401,6 +401,42 @@ estiramiento incómodo, pero no siempre") + Claude (implementación)**
 Tests: 111 → 114 (mismo estirón cuesta menos en el clímax; línea plana sin
 picos no descuenta nada; sin tensión el contexto no inventa). Bench verde.
 
+## 2026-07-03 — Mejora 3/4: LSTM COMPOSITORA + Markov crítico de orden 5
+
+**Autores: Usuario (pidió la LSTM; su queja medible: "motivos repetitivos de
+3 notas", y seguía oyendo disonancia) + Claude (implementación y mediciones)**
+
+**Arquitectura (decisión razonada):** la LSTM NO puntúa genomas — un forward
+por evaluación × ~192k evaluaciones por corrida rompería el criterio de <2 min
+de la spec. Papeles separados: la LSTM es la COMPOSITORA (genera frases con
+memoria de 16 intervalos que el mutador de licks inyecta) y el Markov, subido
+de orden 3 → 5, es el CRÍTICO rápido. La spec permite ambos ("LSTM pequeña o
+Markov de orden alto, fallback a Markov puro").
+
+- `engine/lstm.ts`: forward puro JS que replica EXACTAMENTE tf.layers.lstm
+  (verificado en test: coincide con TF.js a <1e-4). Corre en el worker sin
+  TF.js, determinista. ~11k parámetros (spec pedía <100k).
+- `corpus/lstm-train.ts`: entrenamiento con TF.js en el hilo principal
+  (import dinámico: sus MB no cargan hasta que hay corpus), una vez por
+  corpus, con caché en IndexedDB por firma del corpus. Corpus muy pequeño ⇒
+  null ⇒ compone el Markov (fallback de la spec). Estado visible en la UI.
+- **Medición honesta con los MIDI reales del Usuario** (métrica: % del
+  3-grama de intervalos más repetido; la música real da ~12%):
+  · 1 pieza: LSTM 29% (colapso de modo) vs Markov-5 11% — la LSTM perdía.
+  · 4 piezas: LSTM 14% vs Markov-5 8%.
+  · Con TEMPERATURA de muestreo 1.5 (el remedio clásico al colapso): LSTM
+    9-10% con el mejor fitness (0.831) — empatada con Markov y con 3x más
+    memoria para cuando el corpus crezca. Se activa con T=1.5.
+- **HARMONY_WEIGHT 0.3 → 0.45**: el Usuario seguía oyendo disonancia tras la
+  1/4; la música real puntúa ~0.95 de consonancia vertical, así que el
+  aumento castiga a los tramposos sin rozar el estilo real.
+- El test de equivalencia TF.js↔JS puro resultó flaky por el init no sembrado
+  de TF.js (14/30 muestras vs umbral 15): endurecido con argmax + umbral
+  realista.
+
+Tests: 114 → 117 (equivalencia TF.js, aprendizaje de frase larga, fallback,
+GA con LSTM determinista y legal). Bench de la spec verde (34 s).
+
 ## Ideas anotadas durante las pruebas del Usuario (2026-07-02)
 
 - **Idea (Usuario): estiramientos "que valgan la pena".** Hoy el trade-off es

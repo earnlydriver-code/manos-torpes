@@ -150,4 +150,29 @@ describe('GeneticTrainer con corpus (Etapa 2)', () => {
     const b = new GeneticTrainer({ ...cfg, seed: 777, corpus });
     for (let g = 0; g < 15; g++) expect(a.stepGeneration().best).toBe(b.stepGeneration().best);
   });
+
+  it(
+    'con LSTM compositora: entrena legal, mejora y sigue siendo reproducible',
+    { timeout: 240_000 },
+    async () => {
+      const { trainLstm } = await import('../../corpus/lstm-train');
+      const phrase = [2, 2, 1, -1, -2, 4, -2, -2];
+      const lstm = await trainLstm(
+        Array.from({ length: 6 }, () => [...phrase, ...phrase, ...phrase]),
+      );
+      expect(lstm).not.toBeNull();
+      const corpus = { model: toyModel().toJSON(), alpha: 0.35, lstm: lstm! };
+
+      const a = new GeneticTrainer({ ...cfg, seed: 555, corpus });
+      const b = new GeneticTrainer({ ...cfg, seed: 555, corpus });
+      const initial = a.stats().best;
+      let last = initial;
+      for (let g = 0; g < 60; g++) {
+        last = a.stepGeneration().best;
+        expect(b.stepGeneration().best).toBe(last); // determinismo con LSTM
+      }
+      expect(last).toBeGreaterThan(initial);
+      for (const s of a.getBest().genome.steps) expect(validateStep(s.notes).legal).toBe(true);
+    },
+  );
 });

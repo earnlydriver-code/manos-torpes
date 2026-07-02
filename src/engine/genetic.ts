@@ -4,6 +4,7 @@ import { KBD_HI, KBD_LO, STEPS_PER_BAR } from './constants';
 import { blendedReward } from './corpus-blend';
 import { allNotes, cloneGenome, randomGenome, repairGenome } from './genome';
 import { verticalConsonance } from './harmony';
+import { LstmModel } from './lstm';
 import { MarkovModel, melodyIntervals } from './markov';
 import { musicalReward } from './reward';
 import { detectScaleKrumhansl, scaleInfo } from './reward-helpers';
@@ -20,8 +21,15 @@ import { mulberry32, pick, randInt, weightedPick } from './rng';
 type Individual = { genome: Genome; fitness: number };
 export type GenStats = { gen: number; best: number; avg: number };
 
-/** Peso del oído vertical en el fitness (0 = como la spec pura). */
-const HARMONY_WEIGHT = 0.3;
+/**
+ * Peso del oído vertical en el fitness (0 = como la spec pura).
+ * 0.3 → 0.45 el 2026-07-02: el Usuario seguía oyendo disonancia tras la
+ * mejora 1/4; la música real puntúa ~0.95 así que apenas la roza.
+ */
+const HARMONY_WEIGHT = 0.45;
+
+/** Compositor de frases: la LSTM (contexto 16) o el Markov (contexto=orden). */
+type PhraseSampler = { sample(rng: Rng, context: number[]): number; readonly contextLen: number };
 
 function clampMidi(midi: number): number {
   return Math.max(KBD_LO, Math.min(KBD_HI, midi));
@@ -257,10 +265,11 @@ function makeChordAccompaniment(model: ChordModel): Mutator {
 
 /**
  * Mutador de la Etapa 2: re-escribe la melodía de un compás caminando con
- * intervalos MUESTREADOS DEL CORPUS (conserva el ritmo, inyecta el dibujo
- * melódico aprendido). La física la garantiza el repair posterior.
+ * intervalos MUESTREADOS del compositor (LSTM si hay, Markov si no).
+ * Conserva el ritmo, inyecta el dibujo melódico aprendido; la física la
+ * garantiza el repair posterior.
  */
-function makeCorpusLick(model: MarkovModel): Mutator {
+function makeCorpusLick(model: PhraseSampler): Mutator {
   return (rng, g) => {
     const hand: Hand = rng() < 0.75 ? 'R' : 'L';
     const bar = randInt(rng, 0, g.bars - 1);
@@ -272,7 +281,7 @@ function makeCorpusLick(model: MarkovModel): Mutator {
     if (onsets.length < 2) return;
 
     // Contexto: los últimos intervalos reales antes del compás.
-    const context = melodyIntervals(g.steps.slice(0, from)).slice(-model.order);
+    const context = melodyIntervals(g.steps.slice(0, from)).slice(-model.contextLen);
     let prevTop = Math.max(...onsets[0].notes.filter((n) => n.hand === hand).map((n) => n.midi));
 
     for (let i = 1; i < onsets.length; i++) {
@@ -283,7 +292,7 @@ function makeCorpusLick(model: MarkovModel): Mutator {
       const delta = nextTop - currentTop;
       for (const n of handNotes) n.midi = clampMidi(n.midi + delta);
       context.push(interval);
-      if (context.length > model.order) context.shift();
+      if (context.length > model.contextLen) context.shift();
       prevTop = nextTop;
     }
   };
@@ -303,8 +312,14 @@ export class GeneticTrainer {
     this.rng = mulberry32(cfg.seed);
     this.corpusModel = cfg.corpus ? MarkovModel.fromJSON(cfg.corpus.model) : null;
     this.chordModel = cfg.corpus?.chords ? ChordModel.fromJSON(cfg.corpus.chords) : null;
+    // Compositora de frases: la LSTM (memoria 16) manda; Markov es el respaldo.
+    // T=1.5 medido con el corpus real del Usuario: sin temperatura la red
+    // colapsa en su motivo favorito (bucle 29% → 9%; música real ≈12%).
+    const phraser: PhraseSampler | null = cfg.corpus?.lstm
+      ? LstmModel.fromJSON(cfg.corpus.lstm, 1.5)
+      : this.corpusModel;
     const extra: Array<readonly [Mutator, number]> = [];
-    if (this.corpusModel) extra.push([makeCorpusLick(this.corpusModel), 0.2] as const);
+    if (phraser) extra.push([makeCorpusLick(phraser), 0.2] as const);
     if (this.chordModel) extra.push([makeChordAccompaniment(this.chordModel), 0.18] as const);
     this.mutators = extra.length > 0 ? [...MUTATORS, ...extra] : MUTATORS;
     // Arranque en caliente: hasta media población nace de piezas guardadas

@@ -26,11 +26,13 @@ import {
   deletePiece,
   listCorpusPieces,
   listPieces,
+  loadState,
   saveCorpusPiece,
   savePiece,
+  saveState,
 } from './storage/library';
 import type { SavedCorpusPiece, SavedPiece } from './storage/library';
-import type { Genome } from './types/music';
+import type { Genome, LstmJson } from './types/music';
 
 /** Peso de la similitud al corpus en la recompensa mezclada (Etapa 2). */
 const CORPUS_ALPHA = 0.35;
@@ -94,9 +96,70 @@ function App() {
       })
       .filter((iv) => iv.length >= 4);
     if (seqs.length === 0) return null;
-    const model = new MarkovModel(3);
+    // Orden 5 (antes 3): más memoria melódica para el crítico — parte de la
+    // respuesta al "suena repetitivo, motivos de 3 notas" del Usuario.
+    const model = new MarkovModel(5);
     model.train(seqs);
     return model;
+  }, [corpusPieces]);
+
+  // LSTM compositora (mejora 3/4): se entrena en segundo plano con TF.js una
+  // vez por corpus (con caché en IndexedDB por firma) y viaja como pesos JSON
+  // al worker. Hasta que está lista, el Markov compone (fallback de la spec).
+  const [lstm, setLstm] = useState<LstmJson | null>(null);
+  const [lstmStatus, setLstmStatus] = useState<'sin-corpus' | 'entrenando' | 'lista' | 'respaldo'>(
+    'sin-corpus',
+  );
+  useEffect(() => {
+    if (corpusPieces.length === 0) {
+      setLstm(null);
+      setLstmStatus('sin-corpus');
+      return;
+    }
+    const signature = corpusPieces
+      .map((p) => `${p.id}:${p.addedAt}`)
+      .sort()
+      .join('|');
+    let cancelled = false;
+    void (async () => {
+      try {
+        const cached = await loadState<{ signature: string; weights: LstmJson }>('lstm');
+        if (cancelled) return;
+        if (cached && cached.signature === signature) {
+          setLstm(cached.weights);
+          setLstmStatus('lista');
+          return;
+        }
+        setLstmStatus('entrenando');
+        const seqs = corpusPieces
+          .flatMap((p) => {
+            const source =
+              p.windowsByBars && p.windowsByBars[4].length > 0 ? p.windowsByBars[4] : p.windows;
+            return source.map((w) => melodyIntervals(w.steps));
+          })
+          .filter((iv) => iv.length >= 4);
+        const { trainLstm } = await import('./corpus/lstm-train');
+        const weights = await trainLstm(seqs);
+        if (cancelled) return;
+        if (weights) {
+          setLstm(weights);
+          setLstmStatus('lista');
+          await saveState('lstm', { signature, weights });
+        } else {
+          setLstm(null);
+          setLstmStatus('respaldo'); // corpus muy pequeño: compone el Markov
+        }
+      } catch (err) {
+        console.error('No se pudo entrenar la LSTM (composición con Markov):', err);
+        if (!cancelled) {
+          setLstm(null);
+          setLstmStatus('respaldo');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [corpusPieces]);
 
   // Progresiones de acordes del corpus (mejora 1/4): del corte más largo,
@@ -238,11 +301,12 @@ function App() {
               model: corpusModel.toJSON(),
               alpha: CORPUS_ALPHA,
               chords: chordModel?.toJSON(),
+              lstm: lstm ?? undefined,
             }
           : undefined,
     });
     trainer.setThrottle(speed >= 50 ? null : speed * 2);
-  }, [trainer, effBars, effTempo, speed, warmStart, pieces, learnFromCorpus, corpusModel, chordModel, corpusPieces, taste.weights]);
+  }, [trainer, effBars, effTempo, speed, warmStart, pieces, learnFromCorpus, corpusModel, chordModel, lstm, corpusPieces, taste.weights]);
 
   const handleSave = useCallback(() => {
     if (!trainer.bestGenome || trainer.best === null) return;
@@ -431,6 +495,7 @@ function App() {
         busy={corpusBusy}
         progress={corpusProgress}
         error={corpusError}
+        lstmStatus={lstmStatus}
         learnFromCorpus={learnFromCorpus}
         trainerRunning={trainer.state !== 'sin-iniciar'}
         onFiles={(files) => void handleCorpusFiles(files)}

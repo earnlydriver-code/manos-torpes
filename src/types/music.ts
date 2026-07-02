@@ -47,12 +47,35 @@ export type ChordModelJson = {
   transitions: Record<string, Record<string, number>>;
 };
 
+/**
+ * LSTM pequeña serializada (mejora 3/4, spec §2: "LSTM pequeña en TF.js,
+ * fallback a Markov puro"). Se entrena con TF.js en el hilo principal y se
+ * ejecuta con un forward puro JS en el worker (determinista y rápido).
+ * Pesos con el layout de tf.layers.lstm: puertas en orden i,f,g,o.
+ */
+export type LstmJson = {
+  vocab: number;
+  embedDim: number;
+  hidden: number;
+  emb: number[][]; // [vocab][embedDim]
+  kernel: number[][]; // [embedDim][4*hidden]
+  recurrent: number[][]; // [hidden][4*hidden]
+  bias: number[]; // [4*hidden]
+  outW: number[][]; // [hidden][vocab]
+  outB: number[]; // [vocab]
+  refLogP: number;
+  uniformLogP: number;
+  refEntropy: number;
+};
+
 export type CorpusConfig = {
   model: MarkovJson;
   /** Peso de la similitud al corpus en la recompensa mezclada (0..1). */
   alpha: number;
   /** Progresiones de acordes aprendidas del corpus (opcional). */
   chords?: ChordModelJson;
+  /** LSTM generadora de frases largas (opcional; sin ella, Markov compone). */
+  lstm?: LstmJson;
 };
 
 export type TrainConfig = {
