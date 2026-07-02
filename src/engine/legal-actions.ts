@@ -2,7 +2,7 @@ import type { Finger, Hand, NoteEvent } from '../types/music';
 import { KBD_HI, KBD_LO } from './constants';
 import { SPAN_MAX, travelCost } from './hand-physics';
 import type { Rng } from './rng';
-import { pick, randInt, weightedPick } from './rng';
+import { randInt, weightedPick } from './rng';
 import { HAND_CROSS_TOLERANCE, validateStep } from './step-validator';
 
 /**
