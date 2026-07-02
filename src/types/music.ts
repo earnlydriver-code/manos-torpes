@@ -41,10 +41,18 @@ export type MarkovJson = {
   tables: Record<string, Record<string, number>>[];
 };
 
+/** Modelo de progresiones de acordes serializado (mejora 1/4). */
+export type ChordModelJson = {
+  refLogP: number;
+  transitions: Record<string, Record<string, number>>;
+};
+
 export type CorpusConfig = {
   model: MarkovJson;
   /** Peso de la similitud al corpus en la recompensa mezclada (0..1). */
   alpha: number;
+  /** Progresiones de acordes aprendidas del corpus (opcional). */
+  chords?: ChordModelJson;
 };
 
 export type TrainConfig = {

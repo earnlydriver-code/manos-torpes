@@ -11,6 +11,7 @@ import { TrainerControls } from './components/TrainerControls';
 import { decodeAudioToMono22050, estimateBpm, transcribeAudio } from './corpus/audio-import';
 import { importFromNotes, parseMidiBuffer } from './corpus/midi-import';
 import { suggestTraining } from './corpus/suggest';
+import { ChordModel, chordSequence } from './engine/chords';
 import { MarkovModel, melodyIntervals } from './engine/markov';
 import { rewardBreakdown } from './engine/reward-breakdown';
 import { defaultTaste, updateWeights } from './engine/taste';
@@ -94,6 +95,22 @@ function App() {
       .filter((iv) => iv.length >= 4);
     if (seqs.length === 0) return null;
     const model = new MarkovModel(3);
+    model.train(seqs);
+    return model;
+  }, [corpusPieces]);
+
+  // Progresiones de acordes del corpus (mejora 1/4): del corte más largo,
+  // donde las sucesiones de acordes son visibles.
+  const chordModel = useMemo(() => {
+    const seqs = corpusPieces
+      .flatMap((p) => {
+        const source =
+          p.windowsByBars && p.windowsByBars[4].length > 0 ? p.windowsByBars[4] : p.windows;
+        return source.map((w) => chordSequence(w.steps));
+      })
+      .filter((seq) => seq.filter((s) => s !== 'N').length >= 2);
+    if (seqs.length === 0) return null;
+    const model = new ChordModel();
     model.train(seqs);
     return model;
   }, [corpusPieces]);
@@ -217,11 +234,15 @@ function App() {
       seedGenomes: seeds.length > 0 ? seeds : undefined,
       corpus:
         learnFromCorpus && corpusModel
-          ? { model: corpusModel.toJSON(), alpha: CORPUS_ALPHA }
+          ? {
+              model: corpusModel.toJSON(),
+              alpha: CORPUS_ALPHA,
+              chords: chordModel?.toJSON(),
+            }
           : undefined,
     });
     trainer.setThrottle(speed >= 50 ? null : speed * 2);
-  }, [trainer, effBars, effTempo, speed, warmStart, pieces, learnFromCorpus, corpusModel, corpusPieces, taste.weights]);
+  }, [trainer, effBars, effTempo, speed, warmStart, pieces, learnFromCorpus, corpusModel, chordModel, corpusPieces, taste.weights]);
 
   const handleSave = useCallback(() => {
     if (!trainer.bestGenome || trainer.best === null) return;

@@ -1,4 +1,6 @@
 import type { RewardWeights, Step } from '../types/music';
+import type { ChordModel } from './chords';
+import { harmonicSimilarity } from './chords';
 import { DEFAULT_WEIGHTS } from './constants';
 import { MarkovModel, melodyIntervals } from './markov';
 import { musicalReward } from './reward';
@@ -50,14 +52,20 @@ export function corpusSimilarity(seq: Step[], model: MarkovModel): number {
  * Recompensa mezclada. Las defensas anti-trampa del reward portado (silencio
  * = -1, entropía < 1.2) devuelven ≤ -0.26 y se respetan TAL CUAL: mezclarlas
  * con la similitud diluiría el castigo y reabriría los exploits.
+ *
+ * Con modelo de acordes, el parecido al corpus tiene dos oídos: la MELODÍA
+ * (cómo se mueve la voz de la derecha) y la ARMONÍA (qué acordes se suceden).
  */
 export function blendedReward(
   seq: Step[],
   model: MarkovModel,
   alpha: number,
   w: RewardWeights = DEFAULT_WEIGHTS,
+  chords?: ChordModel | null,
 ): number {
   const base = musicalReward(seq, w);
   if (base <= -0.2) return base;
-  return (1 - alpha) * base + alpha * corpusSimilarity(seq, model);
+  const melodic = corpusSimilarity(seq, model);
+  const similarity = chords ? 0.55 * melodic + 0.45 * harmonicSimilarity(seq, chords) : melodic;
+  return (1 - alpha) * base + alpha * similarity;
 }

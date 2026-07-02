@@ -1,4 +1,5 @@
 import type { Finger, Genome, Hand, NoteEvent, TrainConfig } from '../types/music';
+import { ChordModel, detectChordSegments, detectKeyRoot, SEGMENT_STEPS } from './chords';
 import { KBD_HI, KBD_LO, STEPS_PER_BAR } from './constants';
 import { blendedReward } from './corpus-blend';
 import { allNotes, cloneGenome, randomGenome, repairGenome } from './genome';
@@ -209,6 +210,52 @@ const MUTATORS: ReadonlyArray<readonly [Mutator, number]> = [
 ];
 
 /**
+ * Mutador armónico (mejora 1/4): pone a la MANO IZQUIERDA a acompañar — elige
+ * el acorde del siguiente medio compás muestreando las progresiones del
+ * corpus y acerca las notas graves existentes a las notas de ese acorde
+ * (conserva el ritmo; solo cambia QUÉ notas pisa la izquierda).
+ */
+function makeChordAccompaniment(model: ChordModel): Mutator {
+  return (rng, g) => {
+    const keyRoot = detectKeyRoot(g.steps);
+    const segments = detectChordSegments(g.steps, keyRoot);
+    if (segments.length === 0) return;
+    const segIndex = randInt(rng, 0, segments.length - 1);
+    const prev = segIndex > 0 ? segments[segIndex - 1].symbol : segments[segIndex].symbol;
+    const target = model.sample(rng, prev);
+    if (target === 'N') return;
+    const degree = parseInt(target, 10);
+    const quality = target.endsWith('m') ? 'm' : 'M';
+    const root = (keyRoot + degree) % 12;
+    const tones = [root, (root + (quality === 'm' ? 3 : 4)) % 12, (root + 7) % 12];
+
+    const from = segIndex * SEGMENT_STEPS;
+    const to = from + SEGMENT_STEPS;
+    for (let t = from; t < to && t < g.steps.length; t++) {
+      const left = g.steps[t].notes.filter((n) => n.hand === 'L');
+      if (left.length === 0) continue;
+      for (const n of left) {
+        // La nota del acorde más cercana en su propio registro.
+        let bestMidi = n.midi;
+        let bestDist = Infinity;
+        for (const pc of tones) {
+          for (let oct = -1; oct <= 1; oct++) {
+            const candidate = n.midi - (((n.midi % 12) - pc + 12) % 12) + oct * 12;
+            const dist = Math.abs(candidate - n.midi);
+            if (dist < bestDist && candidate >= KBD_LO && candidate <= KBD_HI) {
+              bestDist = dist;
+              bestMidi = candidate;
+            }
+          }
+        }
+        n.midi = bestMidi;
+      }
+      reassignFingers(rng, g.steps[t].notes.filter((n) => n.hand === 'L'), 'L');
+    }
+  };
+}
+
+/**
  * Mutador de la Etapa 2: re-escribe la melodía de un compás caminando con
  * intervalos MUESTREADOS DEL CORPUS (conserva el ritmo, inyecta el dibujo
  * melódico aprendido). La física la garantiza el repair posterior.
@@ -248,15 +295,18 @@ export class GeneticTrainer {
   private population: Individual[] = [];
   private generation = 0;
   private readonly corpusModel: MarkovModel | null;
+  private readonly chordModel: ChordModel | null;
   private readonly mutators: ReadonlyArray<readonly [Mutator, number]>;
 
   constructor(cfg: TrainConfig) {
     this.cfg = { ...cfg, weights: { ...cfg.weights } };
     this.rng = mulberry32(cfg.seed);
     this.corpusModel = cfg.corpus ? MarkovModel.fromJSON(cfg.corpus.model) : null;
-    this.mutators = this.corpusModel
-      ? [...MUTATORS, [makeCorpusLick(this.corpusModel), 0.2] as const]
-      : MUTATORS;
+    this.chordModel = cfg.corpus?.chords ? ChordModel.fromJSON(cfg.corpus.chords) : null;
+    const extra: Array<readonly [Mutator, number]> = [];
+    if (this.corpusModel) extra.push([makeCorpusLick(this.corpusModel), 0.2] as const);
+    if (this.chordModel) extra.push([makeChordAccompaniment(this.chordModel), 0.18] as const);
+    this.mutators = extra.length > 0 ? [...MUTATORS, ...extra] : MUTATORS;
     // Arranque en caliente: hasta media población nace de piezas guardadas
     // (la primera copia de cada semilla va intacta; las demás, mutadas).
     const seeds = (cfg.seedGenomes ?? []).filter((s) => s.bars === cfg.bars);
@@ -278,7 +328,13 @@ export class GeneticTrainer {
   private evaluate(genome: Genome): number {
     const base =
       this.corpusModel && this.cfg.corpus
-        ? blendedReward(genome.steps, this.corpusModel, this.cfg.corpus.alpha, this.cfg.weights)
+        ? blendedReward(
+            genome.steps,
+            this.corpusModel,
+            this.cfg.corpus.alpha,
+            this.cfg.weights,
+            this.chordModel,
+          )
         : musicalReward(genome.steps, this.cfg.weights);
     if (base <= -0.2) return base; // trampas del reward portado: intactas
     // Oído vertical (Fase 6): los choques simultáneos restan hasta 0.3.

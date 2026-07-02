@@ -357,6 +357,31 @@ paso >0.85 y mejor que el choque sostenido, choque con sostenida de antes).
   las ideas anotadas abajo (LSTM, progresiones de acordes, estiramientos con
   contexto, IA local como generador de semillas) se deciden juntos.
 
+## 2026-07-02 — Mejora 1/4: PROGRESIONES DE ACORDES (armonía horizontal)
+
+**Autores: Usuario (aprobó el plan de 4 mejoras, una a una, tras verificar con
+30k generaciones que el techo era la recompensa, no el cómputo) + Claude**
+
+- **`engine/chords.ts`**: detector de acordes por medio compás (tríadas M/m
+  con raíz ponderada; cobertura <0.6 ⇒ 'N', no se inventa acorde) expresados
+  como GRADOS relativos a la tonalidad Krumhansl (invariante a transposición:
+  una progresión aprendida en La menor sirve en Do). `ChordModel`: cadena de
+  transiciones acorde→acorde con Laplace, serializable, sample determinista.
+- **`harmonicSimilarity` ∈ [0,1]**: ¿los acordes existen (chordness) y se
+  suceden como en el corpus? Entra en la recompensa mezclada: el parecido al
+  corpus ahora tiene dos oídos — melodía 55% + armonía 45%.
+- **Mutador `chordAccompaniment`**: la mano izquierda ACOMPAÑA — muestrea el
+  acorde siguiente de las progresiones aprendidas y acerca sus notas graves a
+  las notas de ese acorde (conserva el ritmo).
+- **Calibración con el MIDI real del Usuario:** detecta las progresiones de
+  Sadness and Sorrow con solo 12% de segmentos 'N'; ejemplo real aprendido:
+  3M → 10M → 0m → 0m → 5m. Entrenamiento (3.000 gens): armonía 1.000,
+  vertical 1.000, cero regresiones (111 tests + bench verdes).
+
+Con esto el agente tiene los dos oídos armónicos: el vertical evita lo feo,
+el horizontal construye lo bello. Siguientes en la cola acordada: 2)
+estiramientos con contexto, 3) LSTM + piezas largas, 4) IA local (Ollama).
+
 ## Ideas anotadas durante las pruebas del Usuario (2026-07-02)
 
 - **Idea (Usuario): estiramientos "que valgan la pena".** Hoy el trade-off es
