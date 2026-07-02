@@ -528,6 +528,28 @@ construyen con forma musical:
 
 Tests: 126 → 131. Bench de la spec verde.
 
+## 2026-07-03 — EXPLOIT nº4 (cazado por el Usuario): el vacío como consonancia
+
+**Autores: Usuario (el dato: "literal fueron 3 notas mano izq y 7 mano
+derecha, no tiene mucha armonía") + Claude (diagnóstico y arreglo)**
+
+- **El exploit:** el oído vertical castiga choques pero tocar casi nada
+  garantiza cero choques — el agente aprendió a CALLARSE para cobrar la
+  consonancia. Las defensas de silencio total (-1) y entropía (≥3 clases de
+  tono) no lo frenan: 10 notas bien elegidas las pasan.
+- **El arreglo — `engine/texture.ts`:** tercera similitud al corpus, la
+  TEXTURA: ataques por compás y voces simultáneas de la música real como
+  referencia. El parecido penaliza por igual el vacío y el atiborramiento
+  (min/max ratio). Mezcla: melodía 45 / armonía 35 / textura 20 dentro de α.
+- **Verificado con el MIDI real del Usuario** (mismo experimento, 3.000
+  gens): textura real 7.3 atq/compás y 2.4 voces → sin textura el mejor
+  tocaba 20 notas (1.7 voces); con textura toca 28 (9.0 atq/compás, 2.1
+  voces, la izquierda pasa de 9 a 20 notas — ACOMPAÑA) con vertical 1.00.
+- Museo de trampas al día: silencio → una-nota → ping-pong ±24 → vacío
+  parcial. Cada una tiene su test de regresión.
+
+Tests: 131 → 135.
+
 ## Ideas anotadas durante las pruebas del Usuario (2026-07-02)
 
 - **Idea (Usuario): estiramientos "que valgan la pena".** Hoy el trade-off es

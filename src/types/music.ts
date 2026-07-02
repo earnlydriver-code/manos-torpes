@@ -87,6 +87,8 @@ export type CorpusConfig = {
   lstm?: LstmJson;
   /** Figuras rítmicas reales por mano (opcional): el ritmo también se aprende. */
   rhythms?: RhythmBank;
+  /** Textura de la música real (opcional): el vacío no es consonancia gratis. */
+  texture?: { onsetsPerBar: number; voices: number };
 };
 
 export type TrainConfig = {

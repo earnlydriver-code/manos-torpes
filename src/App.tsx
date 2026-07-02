@@ -20,6 +20,7 @@ import { composeSong } from './engine/song';
 import { ChordModel, chordSequence } from './engine/chords';
 import { MarkovModel, melodyIntervals } from './engine/markov';
 import { extractRhythms } from './engine/rhythm';
+import { computeTexture, meanTexture } from './engine/texture';
 import { rewardBreakdown } from './engine/reward-breakdown';
 import { defaultTaste, updateWeights } from './engine/taste';
 import type { Taste } from './engine/taste';
@@ -216,6 +217,13 @@ function App() {
     return extractRhythms(windows);
   }, [corpusPieces]);
 
+  // Textura de la música real: el vacío no es consonancia gratis (exploit nº4).
+  const corpusTexture = useMemo(() => {
+    const windows = corpusPieces.flatMap((p) => p.windowsByBars?.[2] ?? p.windows);
+    if (windows.length === 0) return null;
+    return meanTexture(windows.map((w) => computeTexture(w.steps)));
+  }, [corpusPieces]);
+
   // Sugerencia automática: tempo real de las piezas + compases según densidad.
   const suggestion = useMemo(() => suggestTraining(corpusPieces), [corpusPieces]);
   const [autoTuning, setAutoTuning] = useState(true);
@@ -341,11 +349,12 @@ function App() {
               chords: chordModel?.toJSON(),
               lstm: lstm ?? undefined,
               rhythms: rhythmBank ?? undefined,
+              texture: corpusTexture ?? undefined,
             }
           : undefined,
     });
     trainer.setThrottle(speed >= 50 ? null : speed * 2);
-  }, [trainer, effBars, effTempo, speed, warmStart, pieces, learnFromCorpus, corpusModel, chordModel, lstm, rhythmBank, corpusPieces, taste.weights]);
+  }, [trainer, effBars, effTempo, speed, warmStart, pieces, learnFromCorpus, corpusModel, chordModel, lstm, rhythmBank, corpusTexture, corpusPieces, taste.weights]);
 
   const handleComposeSong = useCallback(() => {
     if (!trainer.bestGenome) return;

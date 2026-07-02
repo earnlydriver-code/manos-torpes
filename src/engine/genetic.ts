@@ -402,6 +402,7 @@ export class GeneticTrainer {
             this.cfg.corpus.alpha,
             this.cfg.weights,
             this.chordModel,
+            this.cfg.corpus.texture ?? null,
           )
         : musicalReward(genome.steps, this.cfg.weights);
     if (base <= -0.2) return base; // trampas del reward portado: intactas
