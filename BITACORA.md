@@ -550,6 +550,33 @@ derecha, no tiene mucha armonía") + Claude (diagnóstico y arreglo)**
 
 Tests: 131 → 135.
 
+## 2026-07-03 — TRASPLANTE MAGENTA: el pianista de conservatorio
+
+**Autores: Usuario (tras la conversación honesta sobre los techos del
+proyecto — "¿una IA puede hacer música que suene bien?" — eligió la opción
+(b): trasplante de cerebro pre-entrenado; preguntó si era gratis: SÍ,
+Apache 2.0 + checkpoint alojado gratis por Google) + Claude**
+
+- **`corpus/conservatory.ts`**: melody_rnn de Google Magenta — red entrenada
+  con corpus MASIVOS de melodías reales — CONTINÚA las melodías del corpus
+  del Usuario. Import dinámico (su ~1.4 MB no carga hasta pulsar el botón),
+  checkpoint ~16 MB descargado una vez del CDN de Google, todo local.
+- El reparto de papeles del proyecto intacto: el conservatorio propone frases
+  con oficio → el filtro físico las adapta a manos torpes → van a «Piezas
+  guardadas» como semillas → tu gusto juzga. NO contamina el corpus.
+- **Nota técnica:** attention_rnn (el checkpoint del plan original) ya no
+  existe en Google (404); melody_rnn y basic_rnn siguen vivos — usado
+  melody_rnn. Verificado en Node ANTES de cablear: carga 3.2 s, continúa en
+  1.1 s, y la respuesta a un motivo en La menor fue una línea descendente
+  con repetición variada — musical de verdad.
+- Convivencia de dos TF.js: Magenta usa su 2.8.6 anidado; Basic Pitch y la
+  LSTM propia usan el 3.21 raíz. Vite los separa en chunks distintos.
+- UI: panel «Pianista de conservatorio» con botón «🎓 Continuar mi música»
+  (material: ventana del corpus al azar, o el mejor entrenado).
+
+Tests: 135 → 138 (primer monofónico de la voz derecha, desplazamiento de la
+continuación, frase completa legal tras el filtro físico).
+
 ## Ideas anotadas durante las pruebas del Usuario (2026-07-02)
 
 - **Idea (Usuario): estiramientos "que valgan la pena".** Hoy el trade-off es

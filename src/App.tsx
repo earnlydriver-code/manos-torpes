@@ -9,8 +9,10 @@ import { LibraryPanel } from './components/LibraryPanel';
 import { RewardPanel } from './components/RewardPanel';
 import { TrainerControls } from './components/TrainerControls';
 import { decodeAudioToMono22050, estimateBpm, transcribeAudio } from './corpus/audio-import';
+import { conservatoryPhrase } from './corpus/conservatory';
 import { generateGuestPhrase, listGuestModels, pickPreferredModel } from './corpus/guest';
 import type { GuestModel } from './corpus/guest';
+import { ConservatoryPanel } from './components/ConservatoryPanel';
 import { GuestComposer } from './components/GuestComposer';
 import { importFromNotes, parseMidiBuffer } from './corpus/midi-import';
 import { suggestTraining } from './corpus/suggest';
@@ -73,6 +75,8 @@ function App() {
   const [guestModel, setGuestModel] = useState<string | null>(null);
   const [guestBusy, setGuestBusy] = useState(false);
   const [guestMessage, setGuestMessage] = useState<string | null>(null);
+  const [conservatoryBusy, setConservatoryBusy] = useState(false);
+  const [conservatoryMessage, setConservatoryMessage] = useState<string | null>(null);
 
   useEffect(() => {
     void listGuestModels().then((models) => {
@@ -402,6 +406,44 @@ function App() {
     trainer.reset();
   }, [handleStopPlayback, trainer]);
 
+  const handleConservatory = useCallback(() => {
+    // Material de arranque: una ventana del corpus al azar, o el mejor entrenado.
+    const windows = corpusPieces.flatMap((p) => p.windowsByBars?.[2] ?? p.windows);
+    const source =
+      windows.length > 0
+        ? windows[Math.floor(Math.random() * windows.length)]
+        : trainer.bestGenome;
+    if (!source) return;
+    setConservatoryBusy(true);
+    setConservatoryMessage('Cargando el cerebro de Magenta (~16 MB la primera vez)…');
+    void (async () => {
+      try {
+        const rawNotes = await conservatoryPhrase(source.steps, effTempo);
+        const piece = importFromNotes('conservatorio', rawNotes, effTempo, 'midi');
+        const genome = piece.windowsByBars[2][0] ?? piece.windows[0];
+        if (!genome) throw new Error('la frase no sobrevivió al filtro físico');
+        const reward = musicalReward(genome.steps, taste.weights);
+        await savePiece({
+          name: 'Conservatorio: melody_rnn',
+          createdAt: Date.now(),
+          gen: trainer.gen,
+          reward,
+          genome,
+        });
+        refreshLibrary();
+        setConservatoryMessage(
+          `Frase guardada en «Piezas guardadas» (nota de la heurística: ${reward.toFixed(2)}). Escúchala — y siembra el próximo entrenamiento.`,
+        );
+      } catch (err) {
+        setConservatoryMessage(
+          `No salió: ${err instanceof Error ? err.message : String(err)}. ¿Hay internet? El cerebro se descarga de Google la primera vez.`,
+        );
+      } finally {
+        setConservatoryBusy(false);
+      }
+    })();
+  }, [corpusPieces, trainer.bestGenome, trainer.gen, effTempo, taste.weights, refreshLibrary]);
+
   const handleGuestCompose = useCallback(
     (style: string) => {
       if (!guestModel) return;
@@ -609,6 +651,13 @@ function App() {
         onFiles={(files) => void handleCorpusFiles(files)}
         onDelete={handleCorpusDelete}
         onLearnChange={setLearnFromCorpus}
+      />
+
+      <ConservatoryPanel
+        canCompose={corpusPieces.length > 0 || trainer.bestGenome !== null}
+        busy={conservatoryBusy}
+        message={conservatoryMessage}
+        onCompose={handleConservatory}
       />
 
       <GuestComposer
