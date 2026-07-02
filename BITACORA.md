@@ -295,3 +295,12 @@ que tengan cortes de 3/4 compases y BPM real.
 - **Visión (Usuario): componer solo con el tiempo + gustos propios/del usuario.**
   Ruta acordada: después de las pruebas → LSTM (sustituir/complementar el
   Markov) para estructura larga.
+- **Idea (Usuario, durante prueba con corpus lento a 4 compases): "¿no falta
+  teoría musical / pentatónica?"** Diagnóstico del momento: el modo Auto eligió
+  4 compases (lienzo 2x más grande ⇒ converge más lento) y el estilo imitado
+  es escaso por naturaleza — no era falta de teoría. PERO el hueco real
+  señalado existe: no hay ARMONÍA (progresiones de acordes, cadencias,
+  tensión/reposo). La pentatónica ya está cubierta indirectamente (subconjunto
+  de la mayor en Krumhansl). Candidato fuerte para la siguiente fase: modelo
+  de progresión armónica (detectar acordes por compás del corpus + premiar
+  progresiones aprendidas), complementario a la LSTM.
