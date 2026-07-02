@@ -33,6 +33,7 @@ type Props = {
   onPlayBest: () => void;
   onStopPlayback: () => void;
   onSave: () => void;
+  onComposeSong: () => void;
   onWarmStart: (value: boolean) => void;
 };
 
@@ -63,6 +64,7 @@ export function TrainerControls(props: Props) {
     onPlayBest,
     onStopPlayback,
     onSave,
+    onComposeSong,
     onWarmStart,
   } = props;
   const auto = autoTuning && suggestion !== null;
@@ -94,6 +96,13 @@ export function TrainerControls(props: Props) {
         )}
         <button disabled={!canSave} onClick={onSave} title="Guarda el mejor en la biblioteca">
           💾 Guardar pieza
+        </button>
+        <button
+          disabled={!canPlay}
+          onClick={onComposeSong}
+          title="Convierte el mejor en una canción larga (A-A'-B-A'' y final) y la reproduce"
+        >
+          🎶 Canción
         </button>
 
         <span className="divider" />

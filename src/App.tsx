@@ -15,8 +15,11 @@ import { GuestComposer } from './components/GuestComposer';
 import { importFromNotes, parseMidiBuffer } from './corpus/midi-import';
 import { suggestTraining } from './corpus/suggest';
 import { musicalReward } from './engine/reward';
+import { mulberry32 } from './engine/rng';
+import { composeSong } from './engine/song';
 import { ChordModel, chordSequence } from './engine/chords';
 import { MarkovModel, melodyIntervals } from './engine/markov';
+import { extractRhythms } from './engine/rhythm';
 import { rewardBreakdown } from './engine/reward-breakdown';
 import { defaultTaste, updateWeights } from './engine/taste';
 import type { Taste } from './engine/taste';
@@ -206,6 +209,13 @@ function App() {
     return model;
   }, [corpusPieces]);
 
+  // Banco de figuras rítmicas reales (mejora 5): el ritmo también se aprende.
+  const rhythmBank = useMemo(() => {
+    const windows = corpusPieces.flatMap((p) => p.windowsByBars?.[2] ?? p.windows);
+    if (windows.length === 0) return null;
+    return extractRhythms(windows);
+  }, [corpusPieces]);
+
   // Sugerencia automática: tempo real de las piezas + compases según densidad.
   const suggestion = useMemo(() => suggestTraining(corpusPieces), [corpusPieces]);
   const [autoTuning, setAutoTuning] = useState(true);
@@ -330,11 +340,30 @@ function App() {
               alpha: CORPUS_ALPHA,
               chords: chordModel?.toJSON(),
               lstm: lstm ?? undefined,
+              rhythms: rhythmBank ?? undefined,
             }
           : undefined,
     });
     trainer.setThrottle(speed >= 50 ? null : speed * 2);
-  }, [trainer, effBars, effTempo, speed, warmStart, pieces, learnFromCorpus, corpusModel, chordModel, lstm, corpusPieces, taste.weights]);
+  }, [trainer, effBars, effTempo, speed, warmStart, pieces, learnFromCorpus, corpusModel, chordModel, lstm, rhythmBank, corpusPieces, taste.weights]);
+
+  const handleComposeSong = useCallback(() => {
+    if (!trainer.bestGenome) return;
+    const song = composeSong(mulberry32((Math.random() * 2 ** 31) | 0), trainer.bestGenome);
+    const reward = musicalReward(song.steps, taste.weights);
+    void savePiece({
+      name: `Canción (gen ${trainer.gen})`,
+      createdAt: Date.now(),
+      gen: trainer.gen,
+      reward,
+      genome: song,
+    })
+      .then((id) => {
+        refreshLibrary();
+        playPiece(song, { kind: 'piece', id });
+      })
+      .catch((err) => console.error('No se pudo guardar la canción:', err));
+  }, [trainer.bestGenome, trainer.gen, taste.weights, refreshLibrary, playPiece]);
 
   const handleSave = useCallback(() => {
     if (!trainer.bestGenome || trainer.best === null) return;
@@ -536,6 +565,7 @@ function App() {
         }
         onStopPlayback={handleStopPlayback}
         onSave={handleSave}
+        onComposeSong={handleComposeSong}
         onWarmStart={setWarmStart}
       />
 

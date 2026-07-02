@@ -1,4 +1,4 @@
-import type { Finger, Genome, Hand, NoteEvent, TrainConfig } from '../types/music';
+import type { Finger, Genome, Hand, NoteEvent, RhythmBank, TrainConfig } from '../types/music';
 import { ChordModel, detectChordSegments, detectKeyRoot, SEGMENT_STEPS } from './chords';
 import { KBD_HI, KBD_LO, STEPS_PER_BAR } from './constants';
 import { blendedReward } from './corpus-blend';
@@ -264,6 +264,46 @@ function makeChordAccompaniment(model: ChordModel): Mutator {
 }
 
 /**
+ * Mutador rítmico (mejora 5, queja del Usuario: "no sabe tener ritmo"):
+ * re-tima un compás de una mano con una FIGURA RÍTMICA REAL del corpus —
+ * las alturas existentes se recolocan (en orden, ciclando) sobre los onsets
+ * del patrón. La melodía la ponen los otros mutadores; el groove, este.
+ */
+function makeRhythmLick(bank: RhythmBank): Mutator {
+  return (rng, g) => {
+    const hand: Hand = rng() < 0.6 ? 'R' : 'L';
+    const patterns = bank[hand];
+    if (patterns.length === 0) return;
+    const bar = randInt(rng, 0, g.bars - 1);
+    const from = bar * STEPS_PER_BAR;
+    // Grupos de notas de la mano en el compás, en orden temporal (los acordes
+    // viajan juntos): son el material de alturas que se re-coloca.
+    const groups: NoteEvent[][] = [];
+    for (let t = from; t < from + STEPS_PER_BAR && t < g.steps.length; t++) {
+      const handNotes = g.steps[t].notes.filter((n) => n.hand === hand);
+      if (handNotes.length > 0) groups.push(handNotes.map((n) => ({ ...n })));
+    }
+    if (groups.length === 0) return;
+    const pattern = pick(rng, patterns);
+    // Vaciar la mano en el compás y re-imprimir con el patrón real.
+    for (let t = from; t < from + STEPS_PER_BAR && t < g.steps.length; t++) {
+      g.steps[t].notes = g.steps[t].notes.filter((n) => n.hand !== hand);
+    }
+    pattern.forEach(([offset, dur], i) => {
+      const t = from + offset;
+      if (t >= g.steps.length) return;
+      const source = groups[i % groups.length];
+      for (const n of source) {
+        g.steps[t].notes.push({
+          ...n,
+          durSteps: Math.min(dur, g.steps.length - t),
+        });
+      }
+    });
+  };
+}
+
+/**
  * Mutador de la Etapa 2: re-escribe la melodía de un compás caminando con
  * intervalos MUESTREADOS del compositor (LSTM si hay, Markov si no).
  * Conserva el ritmo, inyecta el dibujo melódico aprendido; la física la
@@ -298,6 +338,16 @@ function makeCorpusLick(model: PhraseSampler): Mutator {
   };
 }
 
+/**
+ * Variación de un genoma con el pool de mutadores estándar + reparación
+ * (para el modo canción: A → A', B...). Determinista con el rng dado.
+ */
+export function varyGenome(rng: Rng, g: Genome, mutations: number): Genome {
+  const child = cloneGenome(g);
+  for (let m = 0; m < mutations; m++) weightedPick(rng, MUTATORS)(rng, child);
+  return repairGenome(child);
+}
+
 export class GeneticTrainer {
   private readonly cfg: TrainConfig;
   private readonly rng: Rng;
@@ -321,6 +371,9 @@ export class GeneticTrainer {
     const extra: Array<readonly [Mutator, number]> = [];
     if (phraser) extra.push([makeCorpusLick(phraser), 0.2] as const);
     if (this.chordModel) extra.push([makeChordAccompaniment(this.chordModel), 0.18] as const);
+    if (cfg.corpus?.rhythms && (cfg.corpus.rhythms.R.length || cfg.corpus.rhythms.L.length)) {
+      extra.push([makeRhythmLick(cfg.corpus.rhythms), 0.2] as const);
+    }
     this.mutators = extra.length > 0 ? [...MUTATORS, ...extra] : MUTATORS;
     // Arranque en caliente: hasta media población nace de piezas guardadas
     // (la primera copia de cada semilla va intacta; las demás, mutadas).

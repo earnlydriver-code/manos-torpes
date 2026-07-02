@@ -496,6 +496,38 @@ elección razonada)**
 Tests: 119 → 126. **El plan post-spec de 4 mejoras queda COMPLETO:**
 1/4 acordes ✅ · 2/4 estiramientos con contexto ✅ · 3/4 LSTM ✅ · 4/4 invitada ✅.
 
+## 2026-07-03 — Mejora 5: RITMO APRENDIDO + MODO CANCIÓN
+
+**Autores: Usuario (las dos quejas exactas: "no sabe tener ritmo" y "no son
+composiciones largas") + Claude (diagnóstico e implementación)**
+
+**Diagnóstico del ritmo:** el corpus enseñaba MELODÍA (intervalos) y ARMONÍA
+(acordes) pero el RITMO de las piezas reales nunca se inyectaba — los genomas
+ritmaban al azar y solo pulseConsistency (≈12% del total) empujaba un poco.
+
+- **`engine/rhythm.ts`**: banco de figuras rítmicas reales — los patrones de
+  onset+duración de cada compás del corpus, POR MANO (el ritmo de la melodía
+  no es el del acompañamiento), rankeados por frecuencia (top 80).
+- **Mutador `rhythmLick`** (peso 0.2): re-tima un compás de una mano con una
+  figura real del corpus; las alturas existentes se recolocan en orden sobre
+  los onsets del patrón. La melodía la ponen otros mutadores; el groove, este.
+
+**Composiciones largas — ENMIENDA AL CONTRATO (decidida con el Usuario, que
+las pidió): `Genome.bars` pasa de 2|3|4 a number.** El ENTRENAMIENTO sigue en
+2-4 compases (donde el genético converge bien); las piezas largas se
+construyen con forma musical:
+- **`engine/song.ts` — composeSong:** estructura A-A'-B-A''-coda. A = el tema
+  entrenado tal cual; A' y A'' variaciones ligeras (2 mutaciones); B contraste
+  (6); cada variación gana entre 4 candidatos por recompensa. Coda: la tónica
+  detectada, sostenida en ambas manos, EN LA OCTAVA MÁS CERCANA a donde cada
+  mano quedó (la primera versión plantaba registros fijos y la propia regla
+  de viaje de repairGenome borraba el acorde final — la física nos auditó).
+  La reparación global cose las costuras entre secciones.
+- Botón **«🎶 Canción»**: convierte el mejor actual en una canción de 9
+  compases (~29 s a 75 BPM), la guarda en la biblioteca y la reproduce.
+
+Tests: 126 → 131. Bench de la spec verde.
+
 ## Ideas anotadas durante las pruebas del Usuario (2026-07-02)
 
 - **Idea (Usuario): estiramientos "que valgan la pena".** Hoy el trade-off es

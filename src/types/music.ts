@@ -17,8 +17,13 @@ export type NoteEvent = {
 
 export type Step = { step: number; notes: NoteEvent[] };
 
-/** steps.length === bars * 16 (semicorcheas en 4/4) */
-export type Genome = { bars: 2 | 3 | 4; tempo: number; steps: Step[] };
+/**
+ * steps.length === bars * 16 (semicorcheas en 4/4).
+ * ENMIENDA al contrato (2026-07-03, decidida con el Usuario): bars pasa de
+ * 2|3|4 a number — el modo canción encadena secciones en piezas largas.
+ * El ENTRENAMIENTO sigue limitado a 2|3|4 (TrainConfig.bars).
+ */
+export type Genome = { bars: number; tempo: number; steps: Step[] };
 
 /** Pesos de los componentes de la recompensa. El feedback humano (Fase 5) ajusta ESTO, no la heurística. */
 export type RewardWeights = {
@@ -68,6 +73,10 @@ export type LstmJson = {
   refEntropy: number;
 };
 
+/** Patrón rítmico de un compás: [inicio dentro del compás 0-15, duración]. */
+export type RhythmPattern = Array<[number, number]>;
+export type RhythmBank = { R: RhythmPattern[]; L: RhythmPattern[] };
+
 export type CorpusConfig = {
   model: MarkovJson;
   /** Peso de la similitud al corpus en la recompensa mezclada (0..1). */
@@ -76,6 +85,8 @@ export type CorpusConfig = {
   chords?: ChordModelJson;
   /** LSTM generadora de frases largas (opcional; sin ella, Markov compone). */
   lstm?: LstmJson;
+  /** Figuras rítmicas reales por mano (opcional): el ritmo también se aprende. */
+  rhythms?: RhythmBank;
 };
 
 export type TrainConfig = {
