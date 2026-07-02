@@ -37,9 +37,23 @@ function tx<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequ
       new Promise<T>((resolve, reject) => {
         const transaction = db.transaction(STORE, mode);
         const request = run(transaction.objectStore(STORE));
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-        transaction.oncomplete = () => db.close();
+        // Se resuelve en oncomplete, no en request.onsuccess: el onsuccess llega
+        // ANTES del commit, y una escritura puede abortar al confirmar (p. ej.
+        // cuota llena) — resolver antes sería una pérdida silenciosa.
+        let result: T;
+        request.onsuccess = () => {
+          result = request.result;
+        };
+        transaction.oncomplete = () => {
+          db.close();
+          resolve(result);
+        };
+        // 'complete' solo dispara en commit exitoso: sin cerrar también en
+        // abort/error, cada fallo filtraría una conexión abierta.
+        transaction.onabort = () => {
+          db.close();
+          reject(transaction.error ?? request.error ?? new Error('transacción abortada'));
+        };
       }),
   );
 }

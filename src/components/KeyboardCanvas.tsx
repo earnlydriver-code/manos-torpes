@@ -176,7 +176,12 @@ export function KeyboardCanvas({ highlights, handsActive, onNoteOn, onNoteOff }:
 
   useEffect(() => {
     return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        // Sin esto, tras el re-montaje de StrictMode/HMR kickAnimation cree
+        // que el bucle sigue vivo y el canvas no se vuelve a dibujar jamás.
+        rafRef.current = null;
+      }
     };
   }, []);
 

@@ -157,6 +157,28 @@ sobre MIDI reales, corre local en el navegador). Un LLM local (Ollama, etc.) no
 toca piano de forma nativa, pero podría experimentarse como generador de
 semillas en notación textual — fase extra opcional, decisión pendiente.
 
-Tests: 67 → 70 (breakdown espejo, arranque en caliente ×2). recharts añadido
+Tests: 61 → 67 (breakdown espejo ×4, arranque en caliente ×2). recharts añadido
 (el bundle sube a ~232 KB gzip — aceptable para app local; code-splitting
 anotado como mejora de la Fase 6).
+
+## 2026-07-01 (noche) — Segunda revisión adversarial (Fase 3): 4 hallazgos, 4 corregidos
+
+**Autor: Claude.** Los verificadores automáticos agotaron la cuota de la sesión,
+así que los 4 hallazgos de los revisores se verificaron A MANO contra el código
+antes de corregir (regla: ante la duda, no es bug — los 4 se sostenían):
+
+1. **KeyboardCanvas (major):** la limpieza del efecto cancelaba el
+   requestAnimationFrame pero no reseteaba `rafRef` a null — tras el doble
+   montaje de StrictMode (React 19 en dev) el canvas quedaba sin redibujar
+   para siempre. Corregido.
+2. **library.ts:** la promesa se resolvía en `request.onsuccess`, que llega
+   ANTES del commit de IndexedDB — un abort al confirmar (cuota llena) sería
+   una pérdida silenciosa. Ahora resuelve en `transaction.oncomplete`.
+3. **library.ts:** `db.close()` solo corría en `oncomplete`; cada transacción
+   fallida filtraba una conexión. Ahora también cierra (y rechaza) en `onabort`.
+4. **TrainerControls:** el tempo se clampaba en cada tecla — escribir "85" era
+   imposible (el "8" se convertía en 60). Ahora se teclea libre y se valida al
+   salir del campo (onBlur).
+
+También: un revisor dejó un archivo temporal de prueba dentro del repo
+(`__scratch_review.test.ts`); eliminado antes del commit.

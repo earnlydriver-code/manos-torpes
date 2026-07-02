@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { TrainerState } from '../hooks/useTrainer';
 
 /**
@@ -32,12 +33,13 @@ type Props = {
 };
 
 export function TrainerControls(props: Props) {
+  const [tempoText, setTempoText] = useState(String(props.tempo));
+  useEffect(() => setTempoText(String(props.tempo)), [props.tempo]);
   const {
     state,
     gen,
     best,
     speed,
-    tempo,
     bars,
     playing,
     canPlay,
@@ -113,9 +115,16 @@ export function TrainerControls(props: Props) {
             type="number"
             min={60}
             max={140}
-            value={tempo}
+            value={tempoText}
             disabled={state !== 'sin-iniciar'}
-            onChange={(e) => onTempo(Math.max(60, Math.min(140, Number(e.target.value) || 100)))}
+            onChange={(e) => setTempoText(e.target.value)}
+            onBlur={() => {
+              // Clampar en cada tecla hace imposible escribir "85" (el "8" se
+              // convertía en 60): se deja teclear libre y se valida al salir.
+              const clamped = Math.max(60, Math.min(140, Number(tempoText) || 100));
+              setTempoText(String(clamped));
+              onTempo(clamped);
+            }}
           />
         </label>
         <label>
