@@ -257,3 +257,16 @@ calificaciones, sin señal no hay cambio, estado inicial de la spec).
 **Con esto quedan completas las Fases 0–5. Falta la Fase 6:** pulido (code-
 splitting del bundle, rendimiento), modo dueto, y evaluar el experimento de la
 IA local como generador de semillas.
+
+## Ideas anotadas durante las pruebas del Usuario (2026-07-02)
+
+- **Idea (Usuario): estiramientos "que valgan la pena".** Hoy el trade-off es
+  plano: la física castiga igual un estiramiento en un momento cualquiera que
+  en un clímax musical. La idea es que el agente considere CUÁNDO vale la pena
+  la incomodidad (p. ej. tolerar tensión si el salto corona una frase o un
+  clímax de contorno) pero no siempre. Candidato para Fase 6: modular la
+  penalización física según el contexto musical del step (posición en la
+  frase, pico del contorno). NO implementar sin decidirlo juntos.
+- **Visión (Usuario): componer solo con el tiempo + gustos propios/del usuario.**
+  Ruta acordada: después de las pruebas → LSTM (sustituir/complementar el
+  Markov) para estructura larga.
