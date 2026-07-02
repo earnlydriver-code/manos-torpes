@@ -7,8 +7,9 @@ export default defineConfig({
   // El worker de entrenamiento importa módulos de engine/; formato ES para
   // que el build de producción no caiga al fallback IIFE.
   worker: { format: 'es' },
-  // TF.js se carga por import dinámico al entrenar la LSTM: sin pre-bundle,
-  // el dev server lo optimiza a mitad de sesión y RECARGA la página, matando
-  // el entrenamiento en curso (visto en las pruebas del Usuario).
-  optimizeDeps: { include: ['@tensorflow/tfjs'] },
+  // TF.js y Magenta se cargan por import dinámico: sin pre-bundle, el dev
+  // server los optimiza a mitad de sesión y RECARGA la página — al usuario le
+  // aparecía "Unexpected token" (HTML servido en lugar del módulo) o moría el
+  // entrenamiento LSTM en curso.
+  optimizeDeps: { include: ['@tensorflow/tfjs', '@magenta/music/es6/music_rnn'] },
 })
