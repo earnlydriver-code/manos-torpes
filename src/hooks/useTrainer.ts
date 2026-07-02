@@ -8,9 +8,14 @@ export type HistoryPoint = { gen: number; best: number; avg: number };
 
 const HISTORY_LIMIT = 4000;
 
-/** Envuelve el trainer.worker: estado React + comandos. La UI nunca entrena. */
+/**
+ * Envuelve el trainer.worker: estado React + comandos. La UI nunca entrena.
+ * Cada corrida lleva un runId; los mensajes de corridas viejas que quedaron
+ * en vuelo tras un reset se descartan (hallazgo de la revisión adversarial).
+ */
 export function useTrainer() {
   const workerRef = useRef<Worker | null>(null);
+  const runIdRef = useRef(0);
   const [state, setState] = useState<TrainerState>('sin-iniciar');
   const [gen, setGen] = useState(0);
   const [best, setBest] = useState<number | null>(null);
@@ -24,6 +29,7 @@ export function useTrainer() {
     workerRef.current = worker;
     worker.onmessage = (event: MessageEvent<WorkerToMain>) => {
       const msg = event.data;
+      if ('runId' in msg && msg.runId !== runIdRef.current) return; // corrida descartada
       switch (msg.type) {
         case 'progress':
           setGen(msg.gen);
@@ -36,6 +42,9 @@ export function useTrainer() {
         case 'newBest':
           setBest(msg.reward);
           setBestGenome(msg.genome);
+          break;
+        case 'paused':
+          setGen(msg.gen); // el gen real puede ir por delante del último progress
           break;
         case 'error':
           console.error('trainer.worker:', msg.message);
@@ -60,11 +69,12 @@ export function useTrainer() {
         seed: (Math.random() * 2 ** 31) | 0,
         ...config,
       };
+      runIdRef.current += 1;
       setHistory([]);
       setGen(0);
       setBest(null);
       setBestGenome(null);
-      send({ type: 'init', config: cfg });
+      send({ type: 'init', config: cfg, runId: runIdRef.current });
       send({ type: 'start' });
       setState('entrenando');
     },
@@ -82,6 +92,7 @@ export function useTrainer() {
   }, [send]);
 
   const reset = useCallback(() => {
+    runIdRef.current += 1; // invalida cualquier mensaje en vuelo de la corrida
     send({ type: 'stop' });
     setState('sin-iniciar');
     setGen(0);

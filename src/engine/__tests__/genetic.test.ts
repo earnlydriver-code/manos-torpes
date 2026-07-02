@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { TrainConfig } from '../../types/music';
 import { DEFAULT_WEIGHTS } from '../constants';
 import { GeneticTrainer } from '../genetic';
+import { cloneGenome, repairGenome } from '../genome';
 import { validateStep } from '../step-validator';
 
 const cfg: TrainConfig = {
@@ -43,5 +44,15 @@ describe('GeneticTrainer — smoke', () => {
     for (let g = 0; g < 20; g++) {
       expect(a.stepGeneration().best).toBe(b.stepGeneration().best);
     }
+  });
+
+  it('invariante físico: el mejor tras 100 gens es un punto fijo de repairGenome', () => {
+    const trainer = new GeneticTrainer({ ...cfg, seed: 2468 });
+    for (let g = 0; g < 100; g++) trainer.stepGeneration();
+    const { genome } = trainer.getBest();
+    const repaired = repairGenome(cloneGenome(genome));
+    // Si repair cambiara algo, el genoma contenía física imposible (sostenidos
+    // que no caben en la mano o teletransportes) que la evolución explotó.
+    expect(JSON.stringify(repaired)).toBe(JSON.stringify(genome));
   });
 });

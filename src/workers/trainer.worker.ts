@@ -1,72 +1,101 @@
 /// <reference lib="webworker" />
 import { GeneticTrainer } from '../engine/genetic';
+import type { GenStats } from '../engine/genetic';
 import type { MainToWorker, WorkerToMain } from './protocol';
 
 /**
- * Loop de entrenamiento en Web Worker: la UI nunca se congela. Regla vital:
- * el loop CEDE el hilo cada tanda de generaciones (los workers son
- * single-threaded — un while(true) sin ceder jamás vería 'pause'/'stop').
+ * Loop de entrenamiento en Web Worker: la UI nunca se congela. Dos reglas
+ * vitales (ambas salieron de la revisión adversarial):
+ *  1. El loop CEDE el hilo entre tandas — un while(true) jamás vería
+ *     'pause'/'stop' (los workers son single-threaded).
+ *  2. Con throttle, las tandas son PEQUEÑAS y el sueño se trocea en ≤100 ms
+ *     re-chequeando running/velocidad: nada de dormir 12 s de un tirón con
+ *     comandos del usuario esperando en la cola.
  */
 
 const post = (msg: WorkerToMain): void =>
   (self as unknown as { postMessage(m: WorkerToMain): void }).postMessage(msg);
 
-const GENS_PER_CHUNK = 25;
+const FAST_CHUNK = 25; // generaciones por tanda a toda velocidad
 const PROGRESS_EVERY_MS = 100;
 
 let trainer: GeneticTrainer | null = null;
+let runId = 0;
 let running = false;
 let loopActive = false;
 let bestSoFar = -Infinity;
 let genPerSecond: number | null = null;
 let lastProgressAt = 0;
 
+function chunkSize(): number {
+  if (genPerSecond === null) return FAST_CHUNK;
+  return Math.max(1, Math.round(genPerSecond / 10)); // ~10 tandas/segundo
+}
+
 function announceBest(gen: number): void {
   if (!trainer) return;
   const { genome, fitness } = trainer.getBest();
   if (fitness > bestSoFar + 1e-9) {
     bestSoFar = fitness;
-    post({ type: 'newBest', gen, reward: fitness, genome });
+    post({ type: 'newBest', runId, gen, reward: fitness, genome });
   }
+}
+
+function postProgress(stats: GenStats, force = false): void {
+  const now = performance.now();
+  if (!force && now - lastProgressAt < PROGRESS_EVERY_MS) return;
+  lastProgressAt = now;
+  post({ type: 'progress', runId, gen: stats.gen, best: stats.best, avg: stats.avg });
 }
 
 async function loop(): Promise<void> {
   if (loopActive) return;
   loopActive = true;
-  while (running && trainer) {
-    const chunkStart = performance.now();
-    let stats = null;
-    for (let i = 0; i < GENS_PER_CHUNK && running; i++) {
-      stats = trainer.stepGeneration();
-      if (stats.best > bestSoFar + 1e-9) announceBest(stats.gen);
-    }
-    if (stats) {
-      const now = performance.now();
-      if (now - lastProgressAt >= PROGRESS_EVERY_MS) {
-        lastProgressAt = now;
-        post({ type: 'progress', gen: stats.gen, best: stats.best, avg: stats.avg });
+  try {
+    while (running && trainer) {
+      const myRun = runId;
+      const pace = genPerSecond;
+      const n = chunkSize();
+      const chunkStart = performance.now();
+      let stats: GenStats | null = null;
+      for (let i = 0; i < n && running; i++) {
+        stats = trainer.stepGeneration();
+        if (stats.best > bestSoFar + 1e-9) announceBest(stats.gen);
+      }
+      if (stats) postProgress(stats);
+      if (runId !== myRun) continue; // nueva corrida: no arrastrar el sueño pendiente
+      if (pace !== null) {
+        const target = chunkStart + (n / pace) * 1000;
+        // Sueño interrumpible: en rebanadas de ≤100 ms, saliendo en cuanto
+        // cambie la velocidad, llegue un stop/pause o arranque otra corrida.
+        while (
+          running &&
+          runId === myRun &&
+          genPerSecond === pace &&
+          performance.now() < target
+        ) {
+          const remaining = target - performance.now();
+          await new Promise((r) => setTimeout(r, Math.min(100, Math.max(0, remaining))));
+        }
+      } else {
+        await new Promise((r) => setTimeout(r, 0)); // ceder el hilo
       }
     }
-    if (genPerSecond !== null) {
-      const elapsed = performance.now() - chunkStart;
-      const targetMs = (GENS_PER_CHUNK / genPerSecond) * 1000;
-      await new Promise((r) => setTimeout(r, Math.max(0, targetMs - elapsed)));
-    } else {
-      await new Promise((r) => setTimeout(r, 0)); // ceder el hilo
-    }
+  } finally {
+    loopActive = false;
   }
-  loopActive = false;
 }
 
 self.onmessage = (event: MessageEvent<MainToWorker>) => {
   const msg = event.data;
   switch (msg.type) {
     case 'init': {
+      runId = msg.runId;
       trainer = new GeneticTrainer(msg.config);
       running = false;
       bestSoFar = -Infinity;
       const stats = trainer.stats();
-      post({ type: 'progress', gen: stats.gen, best: stats.best, avg: stats.avg });
+      postProgress(stats, true);
       announceBest(stats.gen); // el mejor aleatorio inicial, para poder escucharlo ya
       break;
     }
@@ -82,7 +111,10 @@ self.onmessage = (event: MessageEvent<MainToWorker>) => {
       break;
     case 'pause':
       running = false;
-      if (trainer) post({ type: 'paused', gen: trainer.stats().gen });
+      if (trainer) {
+        postProgress(trainer.stats(), true);
+        post({ type: 'paused', runId, gen: trainer.stats().gen });
+      }
       break;
     case 'stop':
       running = false;
@@ -98,7 +130,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>) => {
     case 'requestSnapshot':
       if (trainer) {
         const { genome, fitness } = trainer.getBest();
-        post({ type: 'snapshot', gen: trainer.stats().gen, reward: fitness, genome });
+        post({ type: 'snapshot', runId, gen: trainer.stats().gen, reward: fitness, genome });
       }
       break;
   }

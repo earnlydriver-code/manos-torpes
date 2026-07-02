@@ -42,7 +42,10 @@ type Props = {
 export function KeyboardCanvas({ highlights, onNoteOn, onNoteOff }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const keys = useMemo(buildGeometry, []);
-  const [mouseMidi, setMouseMidi] = useState<number | null>(null);
+  // Una tecla por puntero (multi-touch): un único valor escalar deja notas
+  // atascadas al tocar con varios dedos (hallazgo de la revisión adversarial).
+  const pointerNotesRef = useRef(new Map<number, number>());
+  const [pressedVersion, setPressedVersion] = useState(0);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -52,9 +55,10 @@ export function KeyboardCanvas({ highlights, onNoteOn, onNoteOff }: Props) {
 
     ctx.clearRect(0, 0, LOGICAL_W, LOGICAL_H);
 
+    const pointerMidis = new Set(pointerNotesRef.current.values());
     const paint = (key: KeyGeom) => {
       const h = byMidi.get(key.midi);
-      const pressed = h !== undefined || mouseMidi === key.midi;
+      const pressed = h !== undefined || pointerMidis.has(key.midi);
       const height = key.black ? BLACK_H : LOGICAL_H;
 
       ctx.fillStyle = key.black ? '#1a1a1f' : '#f7f4ec';
@@ -88,7 +92,7 @@ export function KeyboardCanvas({ highlights, onNoteOn, onNoteOff }: Props) {
 
     for (const key of keys) if (!key.black) paint(key);
     for (const key of keys) if (key.black) paint(key);
-  }, [highlights, keys, mouseMidi]);
+  }, [highlights, keys, pressedVersion]);
 
   useEffect(draw, [draw]);
 
@@ -109,12 +113,16 @@ export function KeyboardCanvas({ highlights, onNoteOn, onNoteOff }: Props) {
     [keys],
   );
 
-  const release = useCallback(() => {
-    setMouseMidi((current) => {
-      if (current !== null) onNoteOff(current);
-      return null;
-    });
-  }, [onNoteOff]);
+  const releasePointer = useCallback(
+    (pointerId: number) => {
+      const midi = pointerNotesRef.current.get(pointerId);
+      if (midi === undefined) return;
+      pointerNotesRef.current.delete(pointerId);
+      onNoteOff(midi);
+      setPressedVersion((v) => v + 1);
+    },
+    [onNoteOff],
+  );
 
   return (
     <canvas
@@ -126,11 +134,13 @@ export function KeyboardCanvas({ highlights, onNoteOn, onNoteOff }: Props) {
         const midi = midiAt(e);
         if (midi !== null) {
           onNoteOn(midi);
-          setMouseMidi(midi);
+          pointerNotesRef.current.set(e.pointerId, midi);
+          setPressedVersion((v) => v + 1);
         }
       }}
-      onPointerUp={release}
-      onPointerLeave={release}
+      onPointerUp={(e) => releasePointer(e.pointerId)}
+      onPointerCancel={(e) => releasePointer(e.pointerId)}
+      onPointerLeave={(e) => releasePointer(e.pointerId)}
     />
   );
 }

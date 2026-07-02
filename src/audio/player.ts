@@ -13,6 +13,7 @@ export type StepCallback = (stepIndex: number | null, highlights: StepHighlight[
 
 let part: Tone.Part<{ time: number; stepIndex: number }> | null = null;
 let currentOnStep: StepCallback | null = null;
+let activeSampler: Tone.Sampler | null = null;
 
 export function isPlaying(): boolean {
   return part !== null;
@@ -27,6 +28,11 @@ export function stopPlayback(): void {
   const transport = Tone.getTransport();
   transport.stop();
   transport.cancel();
+  // Los releases de triggerAttackRelease están programados en tiempo absoluto
+  // del AudioContext, no en el Transport: sin esto, las notas sostenidas siguen
+  // sonando segundos después de Detener (hallazgo de la revisión adversarial).
+  activeSampler?.releaseAll();
+  activeSampler = null;
   currentOnStep?.(null, []);
   currentOnStep = null;
 }
@@ -39,6 +45,7 @@ export function playGenome(
 ): void {
   stopPlayback();
   currentOnStep = onStep;
+  activeSampler = sampler;
   const stepSeconds = 60 / genome.tempo / 4; // semicorchea
   const totalSeconds = genome.steps.length * stepSeconds;
 

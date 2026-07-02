@@ -59,19 +59,37 @@ describe('randomGenome', () => {
 });
 
 describe('repairGenome', () => {
+  function emptyGenome(): ReturnType<typeof randomGenome> {
+    return {
+      bars: 2,
+      tempo: 100,
+      steps: Array.from({ length: 32 }, (_, i) => ({ step: i, notes: [] })),
+    };
+  }
+
   it('elimina teletransportes: una mano no puede saltar 2 octavas entre semicorcheas', () => {
-    const rng = mulberry32(99);
-    const g = randomGenome(rng, { bars: 2, tempo: 100 });
-    // Inyectamos un teletransporte ilegal a mano: nota en step 0 y salto de 24 st en step 1.
+    const g = emptyGenome();
     g.steps[0].notes = [{ midi: 48, hand: 'L', finger: 1, durSteps: 1, vel: 0.8 }];
     g.steps[1].notes = [{ midi: 72, hand: 'L', finger: 1, durSteps: 1, vel: 0.8 }];
     repairGenome(g);
+    expect(g.steps[0].notes.length).toBe(1);
     expect(g.steps[1].notes.filter((n) => n.hand === 'L')).toEqual([]);
   });
 
+  it('anchor-ventana: moverse DENTRO del alcance de la mano no es viajar', () => {
+    const g = emptyGenome();
+    // Melodía R dentro de una octava sin mover la mano: 72 → 62 → 70 en steps seguidos.
+    g.steps[0].notes = [{ midi: 72, hand: 'R', finger: 5, durSteps: 1, vel: 0.8 }];
+    g.steps[1].notes = [{ midi: 62, hand: 'R', finger: 1, durSteps: 1, vel: 0.8 }];
+    g.steps[2].notes = [{ midi: 70, hand: 'R', finger: 4, durSteps: 1, vel: 0.8 }];
+    repairGenome(g);
+    expect(g.steps[0].notes.length).toBe(1);
+    expect(g.steps[1].notes.length).toBe(1); // 62 está dentro de [72-12, 72]: sin viaje
+    expect(g.steps[2].notes.length).toBe(1);
+  });
+
   it('repara steps ilegales quitando la nota de menor vel', () => {
-    const rng = mulberry32(100);
-    const g = randomGenome(rng, { bars: 2, tempo: 100 });
+    const g = emptyGenome();
     // Cruce de dedos ilegal inyectado: dedo 3 bajo el 2 en mano derecha.
     g.steps[0].notes = [
       { midi: 60, hand: 'R', finger: 3, durSteps: 1, vel: 0.9 },
@@ -81,5 +99,33 @@ describe('repairGenome', () => {
     expect(validateStep(g.steps[0].notes).legal).toBe(true);
     expect(g.steps[0].notes.length).toBe(1);
     expect(g.steps[0].notes[0].vel).toBe(0.9); // sobrevive la de mayor vel
+  });
+
+  it('sostenidos: si la mano no abarca la nota nueva, suelta antes la sostenida (trunca)', () => {
+    const g = emptyGenome();
+    // R sostiene 60 (dedo 1) por 8 steps; en el step 4 llega 74 (dedo 5): span combinado 14 > 12.
+    g.steps[0].notes = [{ midi: 60, hand: 'R', finger: 1, durSteps: 8, vel: 0.8 }];
+    g.steps[4].notes = [{ midi: 74, hand: 'R', finger: 5, durSteps: 2, vel: 0.8 }];
+    repairGenome(g);
+    expect(g.steps[0].notes[0].durSteps).toBe(4); // truncada al llegar el conflicto
+    expect(g.steps[4].notes.length).toBe(1); // la nota nueva sobrevive
+  });
+
+  it('sostenidos: un dedo aún ocupado no puede tocar otra tecla (trunca la sostenida)', () => {
+    const g = emptyGenome();
+    g.steps[0].notes = [{ midi: 60, hand: 'R', finger: 1, durSteps: 8, vel: 0.8 }];
+    g.steps[4].notes = [{ midi: 65, hand: 'R', finger: 1, durSteps: 1, vel: 0.8 }];
+    repairGenome(g);
+    expect(g.steps[0].notes[0].durSteps).toBe(4);
+  });
+
+  it('es idempotente: reparar un genoma ya reparado no cambia nada', () => {
+    const rng = mulberry32(555);
+    for (let i = 0; i < 20; i++) {
+      const g = randomGenome(rng, { bars: 2, tempo: 100 }); // ya pasa por repair
+      const before = JSON.stringify(g);
+      repairGenome(g);
+      expect(JSON.stringify(g)).toBe(before);
+    }
   });
 });

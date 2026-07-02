@@ -1,5 +1,5 @@
 import type { Step } from '../types/music';
-import { travelCost, validateHandShape } from './hand-physics';
+import { SPAN_MAX, travelCost, validateHandShape } from './hand-physics';
 
 /**
  * Auxiliares de la recompensa musical. Sus firmas se conforman EXACTAMENTE a cómo
@@ -239,21 +239,32 @@ export function avgStrain(seq: Step[]): number {
 
 /**
  * Penalización de desplazamiento ∈ [0,1]: suma el travelCost PORTADO a lo largo
- * de la trayectoria del anchor de cada mano (≈ la tecla del dedo que nombra la
- * spec §3: pulgar en L, meñique en R — la más aguda de la mano), normalizada
- * por el número de beats de la secuencia.
+ * de la trayectoria del anchor de cada mano, normalizada por beats. Semántica
+ * de anchor-VENTANA (la misma de legal-actions/repairGenome): tocar dentro del
+ * alcance [anchor-12, anchor] no es viajar — solo paga cuando el onset cae
+ * fuera y la mano se muda lo mínimo para alcanzarlo.
  */
 export function travelPenalty(seq: Step[]): number {
   if (seq.length === 0) return 0;
   let total = 0;
   for (const hand of ['L', 'R'] as const) {
-    let prev: number | null = null;
+    let feasible: [number, number] | null = null; // intervalo factible de anchors
     for (const s of seq) {
       const handNotes = s.notes.filter((n) => n.hand === hand);
       if (handNotes.length === 0) continue;
-      const pos = Math.max(...handNotes.map((n) => n.midi));
-      if (prev !== null) total += travelCost(prev, pos);
-      prev = pos;
+      const mn = Math.min(...handNotes.map((n) => n.midi));
+      const mx = Math.max(...handNotes.map((n) => n.midi));
+      const lo = mx;
+      const hi = mn + SPAN_MAX;
+      if (feasible === null) {
+        feasible = [lo, hi];
+      } else if (feasible[0] <= hi && lo <= feasible[1]) {
+        feasible = [Math.max(feasible[0], lo), Math.min(feasible[1], hi)]; // sin viaje
+      } else {
+        const dist = lo > feasible[1] ? lo - feasible[1] : feasible[0] - hi;
+        total += travelCost(0, dist);
+        feasible = [lo, hi];
+      }
     }
   }
   const beats = seq.length / 4;
