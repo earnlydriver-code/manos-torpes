@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Espejo local opcional de los samples del Salamander Grand (se descarga, no se versiona)
+public/samples/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
