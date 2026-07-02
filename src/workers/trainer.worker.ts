@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 import { GeneticTrainer } from '../engine/genetic';
 import type { GenStats } from '../engine/genetic';
+import { rewardBreakdown } from '../engine/reward-breakdown';
 import type { MainToWorker, WorkerToMain } from './protocol';
 
 /**
@@ -18,6 +19,7 @@ const post = (msg: WorkerToMain): void =>
 
 const FAST_CHUNK = 25; // generaciones por tanda a toda velocidad
 const PROGRESS_EVERY_MS = 100;
+const SNAPSHOT_EVERY_GENS = 50; // instantánea del mejor para el timeline (spec §6.2)
 
 let trainer: GeneticTrainer | null = null;
 let runId = 0;
@@ -37,8 +39,28 @@ function announceBest(gen: number): void {
   const { genome, fitness } = trainer.getBest();
   if (fitness > bestSoFar + 1e-9) {
     bestSoFar = fitness;
-    post({ type: 'newBest', runId, gen, reward: fitness, genome });
+    post({
+      type: 'newBest',
+      runId,
+      gen,
+      reward: fitness,
+      genome,
+      breakdown: rewardBreakdown(genome.steps),
+    });
   }
+}
+
+function postSnapshot(gen: number): void {
+  if (!trainer) return;
+  const { genome, fitness } = trainer.getBest();
+  post({
+    type: 'snapshot',
+    runId,
+    gen,
+    reward: fitness,
+    genome,
+    breakdown: rewardBreakdown(genome.steps),
+  });
 }
 
 function postProgress(stats: GenStats, force = false): void {
@@ -61,6 +83,7 @@ async function loop(): Promise<void> {
       for (let i = 0; i < n && running; i++) {
         stats = trainer.stepGeneration();
         if (stats.best > bestSoFar + 1e-9) announceBest(stats.gen);
+        if (stats.gen % SNAPSHOT_EVERY_GENS === 0) postSnapshot(stats.gen);
       }
       if (stats) postProgress(stats);
       if (runId !== myRun) continue; // nueva corrida: no arrastrar el sueño pendiente
@@ -97,6 +120,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>) => {
       const stats = trainer.stats();
       postProgress(stats, true);
       announceBest(stats.gen); // el mejor aleatorio inicial, para poder escucharlo ya
+      postSnapshot(stats.gen); // generación 0: el punto de partida del timeline
       break;
     }
     case 'start':
@@ -128,10 +152,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>) => {
       trainer?.setWeights(msg.weights);
       break;
     case 'requestSnapshot':
-      if (trainer) {
-        const { genome, fitness } = trainer.getBest();
-        post({ type: 'snapshot', runId, gen: trainer.stats().gen, reward: fitness, genome });
-      }
+      if (trainer) postSnapshot(trainer.stats().gen);
       break;
   }
 };

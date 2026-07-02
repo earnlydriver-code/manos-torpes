@@ -1,3 +1,4 @@
+import type { RewardBreakdown } from '../engine/reward-breakdown';
 import type { Genome, RewardWeights, TrainConfig } from '../types/music';
 
 /**
@@ -22,8 +23,22 @@ export type MainToWorker =
 export type WorkerToMain =
   | { type: 'ready' }
   | { type: 'progress'; runId: number; gen: number; best: number; avg: number }
-  | { type: 'newBest'; runId: number; gen: number; reward: number; genome: Genome }
-  | { type: 'snapshot'; runId: number; gen: number; reward: number; genome: Genome }
+  | {
+      type: 'newBest';
+      runId: number;
+      gen: number;
+      reward: number;
+      genome: Genome;
+      breakdown: RewardBreakdown;
+    }
+  | {
+      type: 'snapshot'; // instantánea del mejor cada N gens — alimenta el timeline
+      runId: number;
+      gen: number;
+      reward: number;
+      genome: Genome;
+      breakdown: RewardBreakdown;
+    }
   | { type: 'paused'; runId: number; gen: number }
   | { type: 'stopped' }
   | { type: 'error'; message: string };

@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_WEIGHTS } from '../engine/constants';
+import type { RewardBreakdown } from '../engine/reward-breakdown';
 import type { Genome, TrainConfig } from '../types/music';
 import type { MainToWorker, WorkerToMain } from '../workers/protocol';
 
 export type TrainerState = 'sin-iniciar' | 'entrenando' | 'pausado';
 export type HistoryPoint = { gen: number; best: number; avg: number };
+export type Snapshot = { gen: number; reward: number; genome: Genome };
 
 const HISTORY_LIMIT = 4000;
+const SNAPSHOT_LIMIT = 160; // ~8000 generaciones a 1 snapshot/50 gens
 
 /**
  * Envuelve el trainer.worker: estado React + comandos. La UI nunca entrena.
@@ -20,7 +23,9 @@ export function useTrainer() {
   const [gen, setGen] = useState(0);
   const [best, setBest] = useState<number | null>(null);
   const [bestGenome, setBestGenome] = useState<Genome | null>(null);
+  const [breakdown, setBreakdown] = useState<RewardBreakdown | null>(null);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
 
   useEffect(() => {
     const worker = new Worker(new URL('../workers/trainer.worker.ts', import.meta.url), {
@@ -42,6 +47,16 @@ export function useTrainer() {
         case 'newBest':
           setBest(msg.reward);
           setBestGenome(msg.genome);
+          setBreakdown(msg.breakdown);
+          break;
+        case 'snapshot':
+          setSnapshots((prev) => {
+            const next = [...prev, { gen: msg.gen, reward: msg.reward, genome: msg.genome }];
+            // Si el timeline se llena, se ralea quitando uno de cada dos del
+            // tramo viejo (se conserva siempre la generación 0).
+            if (next.length <= SNAPSHOT_LIMIT) return next;
+            return next.filter((_, i) => i === 0 || i % 2 === 1 || i >= next.length - 20);
+          });
           break;
         case 'paused':
           setGen(msg.gen); // el gen real puede ir por delante del último progress
@@ -59,7 +74,7 @@ export function useTrainer() {
   }, []);
 
   const start = useCallback(
-    (config: Pick<TrainConfig, 'bars' | 'tempo'>) => {
+    (config: Pick<TrainConfig, 'bars' | 'tempo' | 'seedGenomes'>) => {
       const cfg: TrainConfig = {
         populationSize: 64,
         elitism: 6,
@@ -71,9 +86,11 @@ export function useTrainer() {
       };
       runIdRef.current += 1;
       setHistory([]);
+      setSnapshots([]);
       setGen(0);
       setBest(null);
       setBestGenome(null);
+      setBreakdown(null);
       send({ type: 'init', config: cfg, runId: runIdRef.current });
       send({ type: 'start' });
       setState('entrenando');
@@ -98,7 +115,9 @@ export function useTrainer() {
     setGen(0);
     setBest(null);
     setBestGenome(null);
+    setBreakdown(null);
     setHistory([]);
+    setSnapshots([]);
   }, [send]);
 
   const setThrottle = useCallback(
@@ -106,5 +125,18 @@ export function useTrainer() {
     [send],
   );
 
-  return { state, gen, best, bestGenome, history, start, pause, resume, reset, setThrottle };
+  return {
+    state,
+    gen,
+    best,
+    bestGenome,
+    breakdown,
+    history,
+    snapshots,
+    start,
+    pause,
+    resume,
+    reset,
+    setThrottle,
+  };
 }

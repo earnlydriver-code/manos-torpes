@@ -2,20 +2,43 @@ import { useCallback, useEffect, useState } from 'react';
 import './App.css';
 import { playGenome, stopPlayback } from './audio/player';
 import type { StepHighlight } from './audio/player';
+import { GenerationTimeline } from './components/GenerationTimeline';
 import { KeyboardCanvas } from './components/KeyboardCanvas';
-import { RewardSparkline } from './components/RewardSparkline';
+import { LibraryPanel } from './components/LibraryPanel';
+import { RewardPanel } from './components/RewardPanel';
 import { TrainerControls } from './components/TrainerControls';
 import { usePiano } from './hooks/usePiano';
 import { useTrainer } from './hooks/useTrainer';
+import type { Snapshot } from './hooks/useTrainer';
+import { deletePiece, listPieces, savePiece } from './storage/library';
+import type { SavedPiece } from './storage/library';
+import type { Genome } from './types/music';
+
+/** Qué está sonando ahora mismo (una sola cosa a la vez). */
+type PlayingSource =
+  | { kind: 'best' }
+  | { kind: 'snapshot'; gen: number }
+  | { kind: 'piece'; id: number }
+  | null;
 
 function App() {
   const piano = usePiano();
   const trainer = useTrainer();
   const [highlights, setHighlights] = useState<StepHighlight[]>([]);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying] = useState<PlayingSource>(null);
   const [speed, setSpeed] = useState(50);
   const [tempo, setTempo] = useState(100);
   const [bars, setBars] = useState<2 | 3 | 4>(2);
+  const [pieces, setPieces] = useState<SavedPiece[]>([]);
+  const [warmStart, setWarmStart] = useState(true);
+
+  const refreshLibrary = useCallback(() => {
+    listPieces()
+      .then(setPieces)
+      .catch((err) => console.error('No se pudo leer la biblioteca:', err));
+  }, []);
+
+  useEffect(refreshLibrary, [refreshLibrary]);
 
   // Velocidad 1x–50x → generaciones/segundo del worker (50x = sin freno).
   const applySpeed = useCallback(
@@ -26,23 +49,57 @@ function App() {
     [trainer],
   );
 
-  const handleTrain = useCallback(() => {
-    trainer.start({ bars, tempo });
-    trainer.setThrottle(speed >= 50 ? null : speed * 2);
-  }, [trainer, bars, tempo, speed]);
-
-  const handlePlayBest = useCallback(() => {
-    const sampler = piano.samplerRef.current;
-    if (!sampler || !trainer.bestGenome) return;
-    playGenome(trainer.bestGenome, sampler, (_step, hl) => setHighlights(hl));
-    setPlaying(true);
-  }, [piano.samplerRef, trainer.bestGenome]);
-
   const handleStopPlayback = useCallback(() => {
     stopPlayback();
-    setPlaying(false);
+    setPlaying(null);
     setHighlights([]);
   }, []);
+
+  const playPiece = useCallback(
+    (genome: Genome, source: Exclude<PlayingSource, null>) => {
+      const sampler = piano.samplerRef.current;
+      if (!sampler) return;
+      playGenome(genome, sampler, (_step, hl) => setHighlights(hl));
+      setPlaying(source);
+    },
+    [piano.samplerRef],
+  );
+
+  const handleTrain = useCallback(() => {
+    const seeds =
+      warmStart && pieces.length > 0
+        ? [...pieces]
+            .filter((p) => p.genome.bars === bars)
+            .sort((a, b) => b.reward - a.reward)
+            .slice(0, 8)
+            .map((p) => p.genome)
+        : undefined;
+    trainer.start({ bars, tempo, seedGenomes: seeds });
+    trainer.setThrottle(speed >= 50 ? null : speed * 2);
+  }, [trainer, bars, tempo, speed, warmStart, pieces]);
+
+  const handleSave = useCallback(() => {
+    if (!trainer.bestGenome || trainer.best === null) return;
+    savePiece({
+      name: `Pieza ${pieces.length + 1}`,
+      createdAt: Date.now(),
+      gen: trainer.gen,
+      reward: trainer.best,
+      genome: trainer.bestGenome,
+    })
+      .then(refreshLibrary)
+      .catch((err) => console.error('No se pudo guardar la pieza:', err));
+  }, [trainer.bestGenome, trainer.best, trainer.gen, pieces.length, refreshLibrary]);
+
+  const handleDelete = useCallback(
+    (id: number) => {
+      if (playing?.kind === 'piece' && playing.id === id) handleStopPlayback();
+      deletePiece(id)
+        .then(refreshLibrary)
+        .catch((err) => console.error('No se pudo borrar la pieza:', err));
+    },
+    [playing, handleStopPlayback, refreshLibrary],
+  );
 
   const handleReset = useCallback(() => {
     handleStopPlayback();
@@ -50,6 +107,8 @@ function App() {
   }, [handleStopPlayback, trainer]);
 
   useEffect(() => stopPlayback, []); // limpiar el Transport al desmontar
+
+  const audioReady = piano.state === 'listo';
 
   return (
     <div className="app">
@@ -76,7 +135,12 @@ function App() {
         </div>
       )}
 
-      <KeyboardCanvas highlights={highlights} onNoteOn={piano.noteOn} onNoteOff={piano.noteOff} />
+      <KeyboardCanvas
+        highlights={highlights}
+        handsActive={playing !== null}
+        onNoteOn={piano.noteOn}
+        onNoteOff={piano.noteOff}
+      />
 
       <TrainerControls
         state={trainer.state}
@@ -85,8 +149,11 @@ function App() {
         speed={speed}
         tempo={tempo}
         bars={bars}
-        playing={playing}
-        canPlay={trainer.bestGenome !== null && piano.state === 'listo'}
+        playing={playing !== null}
+        canPlay={trainer.bestGenome !== null && audioReady}
+        canSave={trainer.bestGenome !== null}
+        warmStart={warmStart}
+        warmCount={pieces.filter((p) => p.genome.bars === bars).length}
         onTrain={handleTrain}
         onPause={trainer.pause}
         onResume={trainer.resume}
@@ -94,11 +161,32 @@ function App() {
         onSpeed={applySpeed}
         onTempo={setTempo}
         onBars={setBars}
-        onPlayBest={handlePlayBest}
+        onPlayBest={() =>
+          trainer.bestGenome && playPiece(trainer.bestGenome, { kind: 'best' })
+        }
         onStopPlayback={handleStopPlayback}
+        onSave={handleSave}
+        onWarmStart={setWarmStart}
       />
 
-      <RewardSparkline history={trainer.history} />
+      <GenerationTimeline
+        snapshots={trainer.snapshots}
+        playingGen={playing?.kind === 'snapshot' ? playing.gen : null}
+        canPlay={audioReady}
+        onPlay={(s: Snapshot) => playPiece(s.genome, { kind: 'snapshot', gen: s.gen })}
+        onStop={handleStopPlayback}
+      />
+
+      <RewardPanel history={trainer.history} breakdown={trainer.breakdown} />
+
+      <LibraryPanel
+        pieces={pieces}
+        playingId={playing?.kind === 'piece' ? playing.id : null}
+        canPlay={audioReady}
+        onPlay={(p) => p.id !== undefined && playPiece(p.genome, { kind: 'piece', id: p.id })}
+        onStop={handleStopPlayback}
+        onDelete={handleDelete}
+      />
 
       <footer>
         <p>

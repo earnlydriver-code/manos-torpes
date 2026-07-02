@@ -112,3 +112,51 @@ no destruye material legal).
 **Pendiente (fases futuras de la spec):** Fase 3 (manos animadas, recharts,
 timeline de generaciones), Fase 4 (corpus MIDI/MP3 + Etapa 2), Fase 5 (feedback
 humano 👍/👎 + IndexedDB + export del cerebro), Fase 6 (pulido + modo dueto).
+
+## 2026-07-01 (noche) — Fase 3 + memoria entre sesiones
+
+**Autores: Usuario (ideas) + Claude (implementación)**
+
+- **Feedback del Usuario tras probar:** suena bien, pero el entrenamiento sube
+  rápido, encuentra un sonido y se estanca; pidió que lo que el agente crea se
+  guarde en memoria "para que cada vez sea mejor" y poder "borrar viejos".
+- **Decisión conjunta:** adelantar la persistencia (que la spec ponía en la
+  Fase 5) a esta entrega, en forma de **biblioteca de piezas** + **arranque en
+  caliente**.
+
+Fase 3 de la spec:
+- **Manos animadas** en el teclado: una sombra por mano que se desliza suavemente
+  sobre su alcance mientras suena (rAF con persecución exponencial).
+- **Panel de aprendizaje con recharts**: curva best/promedio (con downsampling a
+  ≤400 puntos) + desglose de la recompensa del mejor en barras (consonancia,
+  ritmo, estructura, contorno, física, entropía; azul positivo / rojo negativo,
+  paleta validada contra la superficie oscura con el validador de dataviz).
+- **Máquina del tiempo**: el worker guarda una instantánea del mejor cada 50
+  generaciones (y la gen 0); un slider permite escuchar cómo sonaba en la
+  generación 0 vs ahora. El timeline se ralea si supera 160 snapshots.
+- Nuevo `engine/reward-breakdown.ts`: espejo EXACTO de la fórmula del reward.js
+  portado usando los mismos helpers, para la UI. Un test de propiedad (50
+  genomas) garantiza que su total coincide con musicalReward a 12 decimales —
+  si el portado cambiara, el test truena.
+
+Idea del Usuario (memoria):
+- **Biblioteca de piezas** en IndexedDB (`storage/library.ts`): botón «💾
+  Guardar pieza» guarda el mejor actual; el panel lista, reproduce y borra
+  piezas. Sobreviven al recargar la página.
+- **Arranque en caliente**: checkbox «Partir de lo aprendido» — hasta media
+  población inicial nace de las piezas guardadas (la primera copia de cada
+  semilla intacta, el resto mutadas). `TrainConfig.seedGenomes` es opcional;
+  el contrato congelado (NoteEvent/Step/Genome) NO se tocó.
+- Sobre el estancamiento: es el techo de la Etapa 1 (la heurística tiene un
+  máximo alcanzable). El salto real de calidad llega con la Fase 4 (aprender de
+  música real) y la Fase 5 (tu gusto ajusta los pesos).
+
+Idea del Usuario (conectar una IA): registrada para evaluar tras la Fase 4. La
+"IA que aprende de verdad" del proyecto es la propia Etapa 2 (LSTM en TF.js
+sobre MIDI reales, corre local en el navegador). Un LLM local (Ollama, etc.) no
+toca piano de forma nativa, pero podría experimentarse como generador de
+semillas en notación textual — fase extra opcional, decisión pendiente.
+
+Tests: 67 → 70 (breakdown espejo, arranque en caliente ×2). recharts añadido
+(el bundle sube a ~232 KB gzip — aceptable para app local; code-splitting
+anotado como mejora de la Fase 6).

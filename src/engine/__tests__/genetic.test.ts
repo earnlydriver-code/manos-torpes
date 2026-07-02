@@ -46,6 +46,26 @@ describe('GeneticTrainer — smoke', () => {
     }
   });
 
+  it('arranque en caliente: la primera semilla entra intacta (el mejor de gen 0 ≥ su fitness)', () => {
+    // Entrenamos una corrida corta y usamos su mejor como semilla de otra.
+    const first = new GeneticTrainer({ ...cfg, seed: 1010 });
+    for (let g = 0; g < 100; g++) first.stepGeneration();
+    const learned = first.getBest();
+
+    const warm = new GeneticTrainer({ ...cfg, seed: 2020, seedGenomes: [learned.genome] });
+    expect(warm.stats().best).toBeGreaterThanOrEqual(learned.fitness - 1e-9);
+
+    const cold = new GeneticTrainer({ ...cfg, seed: 2020 });
+    expect(warm.stats().best).toBeGreaterThan(cold.stats().best);
+  });
+
+  it('las semillas con compases distintos se ignoran sin romper nada', () => {
+    const donor = new GeneticTrainer({ ...cfg, bars: 3, seed: 33 });
+    const warm = new GeneticTrainer({ ...cfg, bars: 2, seed: 44, seedGenomes: [donor.getBest().genome] });
+    for (const ind of [warm.getBest()]) expect(ind.genome.bars).toBe(2);
+    warm.stepGeneration(); // smoke: no explota
+  });
+
   it('invariante físico: el mejor tras 100 gens es un punto fijo de repairGenome', () => {
     const trainer = new GeneticTrainer({ ...cfg, seed: 2468 });
     for (let g = 0; g < 100; g++) trainer.stepGeneration();

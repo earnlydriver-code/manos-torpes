@@ -39,4 +39,10 @@ export type TrainConfig = {
   crossoverProb: number;
   weights: RewardWeights;
   seed: number;
+  /**
+   * Arranque en caliente (idea del Usuario, 2026-07-01): piezas guardadas que
+   * siembran parte de la población inicial — lo aprendido no se pierde entre
+   * corridas. Solo se usan las que coinciden en compases.
+   */
+  seedGenomes?: Genome[];
 };

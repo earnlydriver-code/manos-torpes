@@ -211,7 +211,21 @@ export class GeneticTrainer {
   constructor(cfg: TrainConfig) {
     this.cfg = { ...cfg, weights: { ...cfg.weights } };
     this.rng = mulberry32(cfg.seed);
-    for (let i = 0; i < cfg.populationSize; i++) this.population.push(this.freshIndividual());
+    // Arranque en caliente: hasta media población nace de piezas guardadas
+    // (la primera copia de cada semilla va intacta; las demás, mutadas).
+    const seeds = (cfg.seedGenomes ?? []).filter((s) => s.bars === cfg.bars);
+    const seeded = seeds.length === 0 ? 0 : Math.min(Math.floor(cfg.populationSize / 2), 24);
+    for (let i = 0; i < seeded; i++) {
+      const child = cloneGenome(seeds[i % seeds.length]);
+      child.tempo = cfg.tempo;
+      if (i >= seeds.length) {
+        const mutations = randInt(this.rng, 1, 3);
+        for (let m = 0; m < mutations; m++) weightedPick(this.rng, MUTATORS)(this.rng, child);
+      }
+      repairGenome(child);
+      this.population.push({ genome: child, fitness: this.evaluate(child) });
+    }
+    for (let i = seeded; i < cfg.populationSize; i++) this.population.push(this.freshIndividual());
     this.sortPopulation();
   }
 

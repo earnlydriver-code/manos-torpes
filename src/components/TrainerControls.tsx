@@ -15,6 +15,9 @@ type Props = {
   bars: 2 | 3 | 4;
   playing: boolean;
   canPlay: boolean;
+  canSave: boolean;
+  warmStart: boolean;
+  warmCount: number;
   onTrain: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -24,6 +27,8 @@ type Props = {
   onBars: (bars: 2 | 3 | 4) => void;
   onPlayBest: () => void;
   onStopPlayback: () => void;
+  onSave: () => void;
+  onWarmStart: (value: boolean) => void;
 };
 
 export function TrainerControls(props: Props) {
@@ -36,6 +41,9 @@ export function TrainerControls(props: Props) {
     bars,
     playing,
     canPlay,
+    canSave,
+    warmStart,
+    warmCount,
     onTrain,
     onPause,
     onResume,
@@ -45,6 +53,8 @@ export function TrainerControls(props: Props) {
     onBars,
     onPlayBest,
     onStopPlayback,
+    onSave,
+    onWarmStart,
   } = props;
 
   return (
@@ -72,6 +82,9 @@ export function TrainerControls(props: Props) {
             🎹 Reproducir mejor
           </button>
         )}
+        <button disabled={!canSave} onClick={onSave} title="Guarda el mejor en la biblioteca">
+          💾 Guardar pieza
+        </button>
 
         <span className="divider" />
 
@@ -117,6 +130,17 @@ export function TrainerControls(props: Props) {
             <option value={4}>4</option>
           </select>
         </label>
+        {warmCount > 0 && (
+          <label title="Siembra la población inicial con tus piezas guardadas: no empieza de cero">
+            <input
+              type="checkbox"
+              checked={warmStart}
+              disabled={state !== 'sin-iniciar'}
+              onChange={(e) => onWarmStart(e.target.checked)}
+            />
+            Partir de lo aprendido ({warmCount})
+          </label>
+        )}
       </div>
     </div>
   );
